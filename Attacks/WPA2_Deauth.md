@@ -2,14 +2,14 @@
 
 Basic Steps:
 
-* 1) Put wNIC into monitor or promiscious mode
-* 2) Monitor the network for traffic
-    * 2a) Consider Strength of signal
-    * 2b) Consider Whether or not you see both router and device traffic
-* 3) Target the monitor to just the interested Access Point and dump its traffic
-* 4) In parallel, send a malicious de-auth packet from your wNIC whose dest is the station and whose src is the router
-* 5) Hopefully capture the eapol handshake to get the encrypted passphrase
-* 6) Use a hash-breaker tool find a passphrase usually from a dictionary or set of rules that reproduce the recovered hased passphrase
+* (1) Put wNIC into monitor or promiscious mode
+* (2) Monitor the network for traffic
+    * (2a) Consider Strength of signal
+    * (2b) Consider Whether or not you see both router and device traffic
+* (3) Target the monitor to just the interested Access Point and dump its traffic
+* (4) In parallel, send a malicious de-auth packet from your wNIC whose dest is the station and whose src is the router
+* (5) Hopefully capture the eapol handshake to get the encrypted passphrase
+* (6) Use a hash-breaker tool find a passphrase usually from a dictionary or set of rules that reproduce the recovered hased passphrase
 
 These steps can be executed on a linux box with the following
 

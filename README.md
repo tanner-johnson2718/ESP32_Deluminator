@@ -2,9 +2,9 @@
 
 The goals of this project are 3 fold:
 
-* 1) Explore the wifi 802.11 protocol and internal workings of this medium
-* 2) Explore the HW and programming model of the ESP32
-* 3) Create an esp32 device that can carry out various wifi based attacks on our home network
+* (1) Explore the wifi 802.11 protocol and internal workings of this medium
+* (2) Explore the HW and programming model of the ESP32
+* (3) Create an esp32 device that can carry out various wifi based attacks on our home network
 
 The physical hardware set up will be the same of that as in the previous project and details can be found [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md).
 
