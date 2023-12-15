@@ -80,7 +80,6 @@ void app_main(void)
     /* Register commands */
     esp_console_register_help_command();
     register_system();
-    register_wifi();
     register_nvs();
 
 #if defined(CONFIG_ESP_CONSOLE_UART_DEFAULT) || defined(CONFIG_ESP_CONSOLE_UART_CUSTOM)
