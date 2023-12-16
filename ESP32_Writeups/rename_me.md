@@ -70,11 +70,13 @@ fclose(f);
     * Reset vector code located in ROM and is unchangable
     * Based on type of reset certain registers dictate boot flow
     * In the usual case the 2nd stage boot loader is called from addr `0x1000`
-    * Reads the Boot Loader header and loads 3 memory regions:
+    * Reads the Boot Loader header and loads 3 memory regions associated with the 2nd stage boot loader:
 
 | Seg | Addr | Len | Target | Comment | 
 | --- | --- | --- | --- | --- |
-| .dram0.bss, .dram0.data, .dram0.rodata | 0x3FFF_0000 | 0x27FC | Internal SRAM 1 | .dram0.bss is 0x30 in len and this seg is actually loaded at `0x3FFF_0030` |
+| .dram0.bss, .dram0.data, .dram0.rodata | `0x3FFF_0000` | `0x27FC` | Internal SRAM 1 | .dram0.bss is `0x30` in len and this seg is actually loaded at `0x3FFF_0030` |
+| .iram_loader.text | `0x4007_8000` | `0x421B` | Internal SRAM 0 | - |
+| .iram.text .iram.text | `0x4008_0400` | `0x10A1`| Internal SRAM 0 | - |
 
 
 * Boot Stage 2
