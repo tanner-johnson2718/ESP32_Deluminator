@@ -20,14 +20,14 @@
 #include "argtable3/argtable3.h"
 #include "esp_partition.h"
 #include "esp_spiffs.h"
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char* TAG = "example";
 #define PROMPT_STR CONFIG_IDF_TARGET
 
 // FS defines
-#define FS_PART_NAME "storage"
-#define MOUNT_PATH "/" FS_PART_NAME
+#define MOUNT_PATH "/spiffs"
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
 #define MAX_FILES 256
 
@@ -60,15 +60,6 @@ static void initialize_filesystem(void)
         return;
     }
 
-    ESP_LOGI(TAG, "Performing SPIFFS_check().");
-    ret = esp_spiffs_check(conf.partition_label);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SPIFFS_check() failed (%s)", esp_err_to_name(ret));
-        return;
-    } else {
-        ESP_LOGI(TAG, "SPIFFS_check() successful");
-    }
-
     size_t total = 0, used = 0;
     ret = esp_spiffs_info(conf.partition_label, &total, &used);
     if (ret != ESP_OK) {
@@ -78,8 +69,6 @@ static void initialize_filesystem(void)
     } else {
         ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
     }
-
-
 }
 
 static void initialize_nvs(void)
@@ -95,7 +84,7 @@ static void initialize_nvs(void)
 static int do_part_table(int argc, char** argv)
 {
     esp_partition_iterator_t part_iter;
-    esp_partition_t* part;
+    const esp_partition_t* part;
 
     part_iter = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
 
@@ -145,7 +134,7 @@ static void register_one_arg_path_cmd(char* cmd_str, char* desc, void* func_ptr)
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
 
-static char* parse_args_one_arg_path(int argc, char** argv)
+static const char* parse_args_one_arg_path(int argc, char** argv)
 {
     int nerrors = arg_parse(argc, argv, (void **)&ls_args);
 
@@ -163,6 +152,7 @@ static int do_ls(int argc, char** argv)
     DIR *d;
     struct dirent *dir;
     char* path = parse_args_one_arg_path(argc, argv);
+    path = MOUNT_PATH;
 
     printf("%s\n", path);
     d = opendir(path);
@@ -179,14 +169,33 @@ static int do_ls(int argc, char** argv)
 
 static int do_df(int argc, char **argv)
 {
-    char* path = parse_args_one_arg_path(argc, argv);
+    const char* path = parse_args_one_arg_path(argc, argv);
     size_t total = 0, used = 0;
-    esp_spiffs_info(path, &total, &used);
-    printf("Partition size: total: %d, used: %d", total, used);
+    esp_spiffs_info(NULL, &total, &used);
+    printf("Partition size: total: %d, used: %d\n", total, used);
 
     return 0;
 }
 
+static int do_cat(int argc, char **argv)
+{
+    char* path = parse_args_one_arg_path(argc, argv);
+    FILE* f = fopen(path, "r");
+    char line[81];
+    
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Failed to open file");
+        return 1;
+    }
+    
+    while(fgets(line, 81, f))
+    {
+        printf("%s", line);
+    }
+
+    fclose(f);
+    return 0;
+}
 
 void app_main(void)
 {
@@ -208,8 +217,10 @@ void app_main(void)
     register_system();
     register_nvs();
     register_part_table();
-    register_one_arg_path_cmd("ls", "List files in a dir", &do_ls);
-    register_one_arg_path_cmd("df", "Disk free on FS", &do_df);
+    register_one_arg_path_cmd("ls", "List files in a dir (path not used for now only 1 spiffs with flat layout)", &do_ls);
+    register_one_arg_path_cmd("df", "Disk free on FS (path not used for now only 1 spiffs with flat layout)", &do_df);
+    register_one_arg_path_cmd("cat", "cat contents of file", &do_cat);
+    
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
