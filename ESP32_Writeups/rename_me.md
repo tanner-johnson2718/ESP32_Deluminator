@@ -89,22 +89,23 @@ fclose(f);
     * Maps `0x4_0000` bytes starting at flash offset `0x3_0000` (this is `0x1_0000` bytes offset into the app.bin image) to vaddr `0x400D_0000`.
         * This mapping happens twice and both times we get a log message like this: `0x400d0020: _stext at ??:?`
         * Would need to look closer but my hypothesis is this is from the APP CPU, which in reset until app code starts, is getting pointed to this addr and this is where the messsage comes from
-    * Finally it verifys the app image and uses the load addr contained in it to start the PRO CPU at address `0x4008_16DC`
+    * Finally it verifys the app image and uses the load addr contained in it to start the PRO CPU at address `0x4008_16DC` which is the function `call_start_cpu0`
 
 | Seg | Addr | Len | Target | Comment |
 | --- | --- | --- | --- | --- |
 | .flash.appdesc .flash.rodata | `0x3f400020` | `0x0e710` | External Flash | - |
 | .rtc.dummy .rtc.force_fast | `0x3ff80000` | `0x00068` | RTC Fast Memory | - |
 | .dram0.data .noinit .dram0.bss | `0x3ffb0000` | `0x02c08` | Internal SRAM 2 | - |
-| .iram0.vectors .iram0.text .iram0.text_end  | `0x40080000` | `0x0ecac` | Internal SRAM 0 | - |
+| .iram0.vectors .iram0.text .iram0.text_end  | `0x40080000` | `0x0ecac` | Internal SRAM 0 | Appears to cache important systems functions that probably are called from interrupt contexts. Can cat and grep the symbol table looking for entiers in section ` 9 ` which is the iram.text section |
 | .rtc.text | `0x400c0000` | `0x00063` | RTC Fast Memory | - |
 | .flash.text | `0x400d0020` | `0x31757` | External Flash | - |
 | .rtc_slow_reserved | `0x50001fe8` | `0x00018` | RTC Slow | - |
 
+* Application start up
+    * Application code starts `call_start_cpu0` which is located at `esp-idf/components/esp_system/port/cpu_start.c`
 
 
-* Who or what is creating these tasks
-* [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
+[Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
 
 # Tasks / FreeRTOS
 
