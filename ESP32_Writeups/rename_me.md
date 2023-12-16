@@ -11,12 +11,12 @@
 | Addr Range | Desc | Comment |
 | --- | --- | --- |
 | `0x0000 - 0x0FFF` | All `0xFF`s | ? |
-| `0x1000 - 0x7FFF` | Second Stage Boot loader | image at `build/bootloader/bootloader.bin` |
-| `0x8000 - 0x8FFF` | Partition Table | image at `build/partition_table/partition-table.bin` |
-| `0x9000 - 0xEFFF` | NVS Data | See below |
-| `0xF000 - 0xFFFF` | Phy Init Data | - 
-| `0x10000 - 0x110000` | Application image | Can extend size as needed |
-| `0x110000 - 0x400000` | SPIFFS parition | Takes up rest of flash memory |
+| `0x1000 - 0x8FFF` | Second Stage Boot loader | image at `build/bootloader/bootloader.bin` |
+| `0x9000 - 0xAFFF` | Partition Table | image at `build/partition_table/partition-table.bin` |
+| `0xA000 - 0xAFFF` | Phy Init Data | - |
+| `0xB000 - 0x1_FFFF` | NVS | See Below | 
+| `0x2_0000 - 0x11_FFFF` | Application image | Can extend size as needed |
+| `0x12_0000 - 0x400000` | SPIFFS parition | Takes up rest of flash memory |
 
 * [Partition Table API Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/partition-tables.html)
 * `esptool.py read_flash` subcommand
@@ -71,6 +71,7 @@ fclose(f);
     * Based on type of reset certain registers dictate boot flow
     * In the usual case the 2nd stage boot loader is called from addr `0x1000`
     * Reads the Boot Loader header and loads 3 memory regions associated with the 2nd stage boot loader:
+    * The passes control over to the loaded 2nd stage bootloader with entry at `0x4008_0688`
 
 | Seg | Addr | Len | Target | Comment | 
 | --- | --- | --- | --- | --- |
@@ -78,9 +79,29 @@ fclose(f);
 | .iram_loader.text | `0x4007_8000` | `0x421B` | Internal SRAM 0 | - |
 | .iram.text .iram.text | `0x4008_0400` | `0x10A1`| Internal SRAM 0 | - |
 
-
 * Boot Stage 2
-    * 
+    * Maps First `0x1_0000` of flash to `0x3F40_0000`, mapping the partition table to `0x3F40_9000`
+        * This makes sense why reading the virt addrs on the jtag only allowed us read the first `0x1_0000` bytes
+    * Loads in the app image in accorance with the partition table and maps the following segments shown below
+    * Remaps first `0x1_0000` bytes at addr `0x2_000` (the app) of flash to `0x3F40_0000`.
+        * This maps over the part table mapping
+        * Only maps `0x1_000` bytes to map the ro_data from the app image into the address space
+    * Maps `0x4_0000` bytes starting at flash offset `0x3_0000` (this is `0x1_0000` bytes offset into the app.bin image) to vaddr `0x400D_0000`.
+        * This mapping happens twice and both times we get a log message like this: `0x400d0020: _stext at ??:?`
+        * Would need to look closer but my hypothesis is this is from the APP CPU, which in reset until app code starts, is getting pointed to this addr and this is where the messsage comes from
+    * Finally it verifys the app image and uses the load addr contained in it to start the PRO CPU at address `0x4008_16DC`
+
+| Seg | Addr | Len | Target | Comment |
+| --- | --- | --- | --- | --- |
+| .flash.appdesc .flash.rodata | `0x3f400020` | `0x0e710` | External Flash | - |
+| .rtc.dummy .rtc.force_fast | `0x3ff80000` | `0x00068` | RTC Fast Memory | - |
+| .dram0.data .noinit .dram0.bss | `0x3ffb0000` | `0x02c08` | Internal SRAM 2 | - |
+| .iram0.vectors .iram0.text .iram0.text_end  | `0x40080000` | `0x0ecac` | Internal SRAM 0 | - |
+| .rtc.text | `0x400c0000` | `0x00063` | RTC Fast Memory | - |
+| .flash.text | `0x400d0020` | `0x31757` | External Flash | - |
+| .rtc_slow_reserved | `0x50001fe8` | `0x00018` | RTC Slow | - |
+
+
 
 * Who or what is creating these tasks
 * [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
