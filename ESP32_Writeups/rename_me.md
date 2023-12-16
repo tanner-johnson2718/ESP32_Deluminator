@@ -1,7 +1,8 @@
 # ESP 32 Systems Overview
 
-* start with `system/console/basic/example` to give us an interactive starting point
+* Start with `system/console/basic/example` to give us an interactive starting point
 * Build, flash, and use USB UART as described [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
+* This document will describe some esp32 systems concepts in general but in particular will describe at a high level the esp32 project located at [esp32_build](../esp32_build/)
 
 # Flash Memory
 
@@ -15,7 +16,11 @@
 | `0x9000 - 0xEFFF` | NVS Data | See below |
 | `0xF000 - 0xFFFF` | Phy Init Data | - 
 | `0x10000 - 0x110000` | Application image | Can extend size as needed |
-| `0x110000 - ?` | Further paritions | Can put other images or filesystems here |
+| `0x110000 - 0x400000` | SPIFFS parition | Takes up rest of flash memory |
+
+* [Partition Table API Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/partition-tables.html)
+* `esptool.py read_flash` subcommand
+* [JTAG Flash reading](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Reverse_Engineer_Example.md)
 
 ## NVS
 
@@ -33,15 +38,32 @@ nvs_set_i32(my_handle, "key", val);
 nvs_get_i32(my_handle, "key", &val);
 ```
 
+* [NVS](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html)
+
 ## File systems on Flash Memory
 
-## Ref
+* Tried using FAT FS but it got corrupted rather quickly
+* Using SPIFFS which does not allow dir
 
-* [Partition Table API Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/partition-tables.html)
-* `esptool.py read_flash` subcommand
-* [JTAG Flash reading](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Reverse_Engineer_Example.md)
-* [NVS](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html)
-* 
+```C
+#include "esp_spiffs.h"
+
+// Easy mounting helper to mount fs
+esp_vfs_spiffs_register(&config);
+esp_spiffs_check(config.partition_label);
+esp_spiffs_info(conf.partition_label, &total, &used);
+esp_vfs_spiffs_unregister(conf.partition_label);
+
+// Now the vfs gives POSIX complient like read, write, open, close and delete
+FILE* f = fopen("/spiffs/hello.txt", "w");
+fgets(line, sizeof(line), f); fread(...);
+fwrite(...);
+remove(path);
+fclose(f);
+```
+
+* [SPIFFS API ref](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/spiffs.html)
+
 # RAM
 
 # Tasks
