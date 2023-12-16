@@ -73,7 +73,7 @@ fclose(f);
     * Reads the Boot Loader header and loads 3 memory regions:
 
 | Seg | Addr | Len | Target | Comment | 
-| --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | .dram0.bss, .dram0.data, .dram0.rodata | 0x3FFF_0000 | 0x27FC | Internal SRAM 1 | .dram0.bss is 0x30 in len and this seg is actually loaded at `0x3FFF_0030` |
 
 
