@@ -64,6 +64,35 @@ fclose(f);
 
 * [SPIFFS API ref](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/spiffs.html)
 
-# RAM
+# Early Start Up
 
-# Tasks
+* Bootstage 1
+    * Reset vector code located in ROM and is unchangable
+    * Based on type of reset certain registers dictate boot flow
+    * In the usual case the 2nd stage boot loader is called from addr `0x1000`
+    * Reads the Boot Loader header and loads 3 memory regions:
+
+| Seg | Addr | Len | Target | Comment | 
+| --- | --- | --- | --- |
+| .dram0.bss, .dram0.data, .dram0.rodata | 0x3FFF_0000 | 0x27FC | Internal SRAM 1 | .dram0.bss is 0x30 in len and this seg is actually loaded at `0x3FFF_0030` |
+
+
+* Boot Stage 2
+    * 
+
+* Who or what is creating these tasks
+* [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
+
+# Tasks / FreeRTOS
+
+* [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
+* [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
+
+
+# Thangs TODO
+
+* What is going on with like this copying of the entire esp-idf folder
+* RAM - account for every byte
+* Interrupts
+* Get NVS usage
+* Command for formatting storage

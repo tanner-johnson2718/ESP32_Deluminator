@@ -29,7 +29,7 @@ static const char* TAG = "example";
 // FS defines
 #define MOUNT_PATH "/spiffs"
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
-#define MAX_FILES 256
+#define MAX_FILES 32
 
 static struct 
 {
@@ -43,7 +43,7 @@ static void initialize_filesystem(void)
     esp_vfs_spiffs_conf_t conf = {
       .base_path = MOUNT_PATH,
       .partition_label = NULL,
-      .max_files = 5,
+      .max_files = MAX_FILES,
       .format_if_mount_failed = true
     };
 
