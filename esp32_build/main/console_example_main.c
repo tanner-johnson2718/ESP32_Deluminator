@@ -22,6 +22,7 @@
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "heap_memory_layout.h"
 
 static const char* TAG = "example";
 #define PROMPT_STR CONFIG_IDF_TARGET
@@ -35,6 +36,13 @@ static struct
 {
     struct arg_end *end;
 } no_args;
+
+static struct 
+{
+    struct arg_str *path;
+    struct arg_end *end;
+} ls_args;
+
 
 static void initialize_filesystem(void)
 {
@@ -81,6 +89,35 @@ static void initialize_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
+static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
+{
+    no_args.end = arg_end(1);
+    const esp_console_cmd_t cmd = {
+        .command = cmd_str,
+        .help = desc,
+        .hint = NULL,
+        .func = func_ptr,
+        .argtable = &no_args
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+
+}
+
+static void register_one_arg_path_cmd(char* cmd_str, char* desc, void* func_ptr)
+{
+    ls_args.end = arg_end(1);
+    ls_args.path = arg_str0(NULL, NULL, "path",
+                                      desc);
+    const esp_console_cmd_t cmd = {
+        .command = cmd_str,
+        .help = "List contents of current dir",
+        .hint = NULL,
+        .func = func_ptr,
+        .argtable = &ls_args
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+}
+
 static int do_part_table(int argc, char** argv)
 {
     esp_partition_iterator_t part_iter;
@@ -100,40 +137,6 @@ static int do_part_table(int argc, char** argv)
     return 0;
 }
 
-static void register_part_table(void)
-{
-    no_args.end = arg_end(1);
-    const esp_console_cmd_t cmd = {
-        .command = "part_table",
-        .help = "Print the partition table",
-        .hint = NULL,
-        .func = &do_part_table,
-        .argtable = &no_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-}
-
-static struct 
-{
-    struct arg_str *path;
-    struct arg_end *end;
-} ls_args;
-
-static void register_one_arg_path_cmd(char* cmd_str, char* desc, void* func_ptr)
-{
-    ls_args.end = arg_end(1);
-    ls_args.path = arg_str0(NULL, NULL, "path",
-                                      desc);
-    const esp_console_cmd_t cmd = {
-        .command = cmd_str,
-        .help = "List contents of current dir",
-        .hint = NULL,
-        .func = func_ptr,
-        .argtable = &ls_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-}
-
 static const char* parse_args_one_arg_path(int argc, char** argv)
 {
     int nerrors = arg_parse(argc, argv, (void **)&ls_args);
@@ -151,7 +154,7 @@ static int do_ls(int argc, char** argv)
     
     DIR *d;
     struct dirent *dir;
-    char* path = parse_args_one_arg_path(argc, argv);
+    const char* path = parse_args_one_arg_path(argc, argv);
     path = MOUNT_PATH;
 
     printf("%s\n", path);
@@ -169,7 +172,7 @@ static int do_ls(int argc, char** argv)
 
 static int do_df(int argc, char **argv)
 {
-    const char* path = parse_args_one_arg_path(argc, argv);
+    // const char* path = parse_args_one_arg_path(argc, argv);
     size_t total = 0, used = 0;
     esp_spiffs_info(NULL, &total, &used);
     printf("Partition size: total: %d, used: %d\n", total, used);
@@ -179,7 +182,7 @@ static int do_df(int argc, char **argv)
 
 static int do_cat(int argc, char **argv)
 {
-    char* path = parse_args_one_arg_path(argc, argv);
+    const char* path = parse_args_one_arg_path(argc, argv);
     FILE* f = fopen(path, "r");
     char line[81];
     
@@ -196,6 +199,117 @@ static int do_cat(int argc, char **argv)
     fclose(f);
     return 0;
 }
+
+static int do_dump_soc_regions(int argc, char **argv)
+{
+    /*
+    typedef struct {
+        intptr_t start;  ///< Start address of the region
+        size_t size;            ///< Size of the region in bytes
+        size_t type;             ///< Type of the region (index into soc_memory_types array)
+        intptr_t iram_address; ///< If non-zero, is equivalent address in IRAM
+    } soc_memory_region_t;
+    */
+
+    if(argc != 3)
+    {
+        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        return 1;
+    }
+
+    size_t num_regions = soc_get_available_memory_region_max_count();
+    soc_memory_region_t _regions[num_regions];
+    const soc_memory_region_t* regions;
+    int i;
+    soc_memory_region_t *b;
+    soc_memory_region_t *a;
+    size_t size = 0;
+
+    if(argv[1][0] == 'a')
+    {
+        num_regions = soc_memory_region_count;
+        regions = soc_memory_regions;
+
+    }
+    else if(argv[1][0] == 'f')
+    {
+        num_regions = soc_get_available_memory_regions(_regions);
+        regions = _regions;
+    }
+    else
+    {
+        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        return 1;
+    }
+
+    if(argv[2][0] == 'e')
+    {
+        
+        for(i = 0; i < num_regions ; ++i)
+        {
+            b = &regions[i];   
+            printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
+               b->start, b->size, soc_memory_types[b->type].name, b->iram_address);
+        }
+    }
+    else if(argv[2][0] == 'c')
+    {
+        a = &regions[0];
+        size = a->size;
+        for(i = 1; i < num_regions ; ++i)
+        {
+            b = &regions[i];
+
+            // Found D/IRAM type assume to hit discontigous
+            if((b->type == 1) && (a->type != 1))
+            {
+                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+                       a->start, size, soc_memory_types[a->type].name);
+                a = b;
+                size = a->size;
+                continue;
+            }
+            else if(a->type == 1)
+            {
+                printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
+                        a->start, a->size, soc_memory_types[a->type].name, a->iram_address);
+                a = b;
+                size = a->size;
+                continue;
+            }
+
+            // Found contig region
+            if((a->start + size == b->start) && (a->type == b->type))
+            {
+                size += b->size;
+                continue;
+            }
+
+            // Found Dis cont, print and reset a
+            else
+            {
+                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+               a->start, size, soc_memory_types[a->type].name);
+               a=b;
+               size = a->size;
+               continue;
+            }
+        }
+
+        printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+                     a->start, size, soc_memory_types[a->type].name);
+    }
+    else
+    {
+        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        return 1;
+    }
+    
+
+    return 0;
+}
+
+
 
 void app_main(void)
 {
@@ -216,11 +330,11 @@ void app_main(void)
     esp_console_register_help_command();
     register_system();
     register_nvs();
-    register_part_table();
+    register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
     register_one_arg_path_cmd("ls", "List files in a dir (path not used for now only 1 spiffs with flat layout)", &do_ls);
     register_one_arg_path_cmd("df", "Disk free on FS (path not used for now only 1 spiffs with flat layout)", &do_df);
     register_one_arg_path_cmd("cat", "cat contents of file", &do_cat);
-    
+    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free>", &do_dump_soc_regions);    
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));

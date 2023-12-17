@@ -2,4 +2,4 @@ target remote 192.168.0.104:3333
 set remote hardware-watchpoint-limit 2
 mon reset halt
 maintenance flush register-cache
-thb call_start_cpu0
+thb start_cpu0

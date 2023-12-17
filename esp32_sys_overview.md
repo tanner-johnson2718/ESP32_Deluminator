@@ -109,7 +109,12 @@ fclose(f);
     * Since we are in app code we can use gdb to peer into this start up code
         * todo this don't use the `idf.py gdb` call as it auto inserts a break point at app_main and continues after reset
         * Instead use the provided [gdb script](./gdb_start.sh)
-    * 
+    * cpu0 enters `start_cpu0()` in `startup.c`
+        * cpu0 calls `do_core_init()` in `startup.c`
+            * cpu0 calls `heap_caps_init()` in `heap/heap_caps_init.c`
+            * heap init uses the `heap_memory_layout.h` API and global structs to find all the RAM regions such that it is not used by static data, used by ROM code, or reserved by a component using the `SOC_RESERVE_MEMORY_REGION()` macro.
+            * It then condenses these memory regions down and registers them 
+
 
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
