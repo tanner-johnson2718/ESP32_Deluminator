@@ -103,6 +103,13 @@ fclose(f);
 
 * Application start up
     * Application code starts `call_start_cpu0` which is located at `esp-idf/components/esp_system/port/cpu_start.c`
+        * This appears to do alot of early hardware init
+        * This also starts the other core
+        * Both cores end their init with the `SYS_STARTUP_FN` macro
+    * Since we are in app code we can use gdb to peer into this start up code
+        * todo this don't use the `idf.py gdb` call as it auto inserts a break point at app_main and continues after reset
+        * Instead use the provided [gdb script](./gdb_start.sh)
+    * 
 
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
