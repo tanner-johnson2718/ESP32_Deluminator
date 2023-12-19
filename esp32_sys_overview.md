@@ -112,10 +112,21 @@ fclose(f);
     * cpu0 enters `start_cpu0()` in `startup.c`
         * cpu0 calls `do_core_init()` in `startup.c`
             * cpu0 calls `heap_caps_init()` in `heap/heap_caps_init.c`
-            * heap init uses the `heap_memory_layout.h` API and global structs to find all the RAM regions such that it is not used by static data, used by ROM code, or reserved by a component using the `SOC_RESERVE_MEMORY_REGION()` macro.
-            * It then condenses these memory regions down and registers them 
-
-
+                * heap init uses the `heap_memory_layout.h` API and global structs to find all the RAM regions such that it is not used by static data, used by ROM code, or reserved by a component using the `SOC_RESERVE_MEMORY_REGION()` macro.
+                * It then condenses these memory regions down, each regions and allocates heaps metadat for that heap in that region.
+            * `do_core_init` then does all sorts of init tasks: timers, secure boot verification, etc, etc.
+        * cpu0 then calls `do_global_ctors` which allows functions added to the init array at build time to be ran. See [here](https://github.com/tanner-johnson2718/MEME_OS_3/tree/main/Loading) for details on init functions and their linking.
+        * Finally it secondary init which passes control over to other cores so if they have init todo they may
+    * cpu0 calls `esp_startup_start_app`
+        * starts dameon tasks
+        * starts "main task" pinned to cpu0
+            * calls our app main
+        * starts scheduler `vTaskStartScheduler();`
+    * cpu1 started ite init late in cpu0's init.
+    * cpu1 calls ``
+        * starts dameon tasks
+        * waits for scheduler on cpu0 to be finished
+        * starts scheduler `xPortStartScheduler();`
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
 
@@ -128,7 +139,10 @@ fclose(f);
 # Thangs TODO
 
 * What is going on with like this copying of the entire esp-idf folder
-* RAM - account for every byte
 * Interrupts
 * Get NVS usage
 * Command for formatting storage
+* Why do I get a returned from app main
+    * is second cpu returning?
+    * What cpu is running app code
+    * What task is mapped to what cpu

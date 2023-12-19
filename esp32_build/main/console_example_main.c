@@ -309,7 +309,10 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
+static void register_soc_regions()
+{
 
+}
 
 void app_main(void)
 {
@@ -334,7 +337,7 @@ void app_main(void)
     register_one_arg_path_cmd("ls", "List files in a dir (path not used for now only 1 spiffs with flat layout)", &do_ls);
     register_one_arg_path_cmd("df", "Disk free on FS (path not used for now only 1 spiffs with flat layout)", &do_df);
     register_one_arg_path_cmd("cat", "cat contents of file", &do_cat);
-    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free>", &do_dump_soc_regions);    
+    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);    
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
