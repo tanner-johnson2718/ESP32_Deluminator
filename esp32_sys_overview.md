@@ -123,7 +123,7 @@ fclose(f);
             * calls our app main
         * starts scheduler `vTaskStartScheduler();`
     * cpu1 started ite init late in cpu0's init.
-    * cpu1 calls ``
+    * cpu1 calls `esp_startup_start_app_other_cores`
         * starts dameon tasks
         * waits for scheduler on cpu0 to be finished
         * starts scheduler `xPortStartScheduler();`
@@ -146,3 +146,4 @@ fclose(f);
     * is second cpu returning?
     * What cpu is running app code
     * What task is mapped to what cpu
+* Are their filedes? How does printf know where to go?

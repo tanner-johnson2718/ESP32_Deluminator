@@ -309,10 +309,10 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
-static void register_soc_regions()
-{
-
-}
+// do_get_nvs_free
+// do_heap_regions
+// do better tasks dump
+// 
 
 void app_main(void)
 {
