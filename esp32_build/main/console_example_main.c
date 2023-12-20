@@ -101,7 +101,7 @@ static void init_lcd(void)
     LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
     LCD_home();
     LCD_clearScreen();
-    LCD_writeStr("----- 20x4 LCD -----");
+    LCD_writeStr("Mesliss is Sexy!");
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)

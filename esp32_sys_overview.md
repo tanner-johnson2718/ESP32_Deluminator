@@ -139,3 +139,13 @@ fclose(f);
 
 * https://github.com/maxsydney/ESP32-HD44780
 * Take c and header file from this and add the c file to the CMakeLists.txt SRC list
+* set master clock to 10000
+* Use the following Pinout
+
+| ESP Pin | LCD Pin | Func |
+| --- | --- | --- |
+| 18 | SCL | SCL |
+| 19 | SDA | SDA |
+| 3.3V | Vin | Vin |
+| GND | GND | GND
+
