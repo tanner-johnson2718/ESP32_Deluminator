@@ -39,6 +39,10 @@ static const char* TAG = "example";
 #define LCD_COLS 20
 #define LCD_ROWS 4
 
+#define BUTTON_PIN 13
+#define SHORT_PRESS_MS 100
+#define LONG_PRESS_MS 400
+
 static struct 
 {
     struct arg_end *end;
@@ -101,7 +105,29 @@ static void init_lcd(void)
     LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
     LCD_home();
     LCD_clearScreen();
-    LCD_writeStr("Mesliss is Sexy!");
+    LCD_writeStr("Hello World!!");
+}
+
+static void init_center_button(void)
+{
+    button_config_t gpio_btn_cfg = 
+    {
+        .type = BUTTON_TYPE_GPIO,
+        .long_press_ticks = CONFIG_BUTTON_LONG_PRESS_TIME_MS,
+        .short_press_ticks = CONFIG_BUTTON_SHORT_PRESS_TIME_MS,
+        .gpio_button_config = {
+            .gpio_num = 0,
+            .active_level = 0,
+            },
+    };
+
+    button_handle_t gpio_btn = iot_button_create(&gpio_btn_cfg);
+    if(NULL == gpio_btn)
+    {
+        ESP_LOGE(TAG, "Button create failed");
+    }
+
+    iot_button_register_cb(gpio_btn, BUTTON_SINGLE_CLICK, button_single_click_cb,NULL);
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
