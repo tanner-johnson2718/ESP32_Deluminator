@@ -135,15 +135,7 @@ fclose(f);
 * [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
 * [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
 
+# I2C Library for LCD 2004 w/ PCF8547T IO Expander
 
-# Thangs TODO
-
-* What is going on with like this copying of the entire esp-idf folder
-* Interrupts
-* Get NVS usage
-* Command for formatting storage
-* Why do I get a returned from app main
-    * is second cpu returning?
-    * What cpu is running app code
-    * What task is mapped to what cpu
-* Are their filedes? How does printf know where to go?
+* https://github.com/maxsydney/ESP32-HD44780
+* Take c and header file from this and add the c file to the CMakeLists.txt SRC list

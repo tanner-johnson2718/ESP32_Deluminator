@@ -23,6 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "heap_memory_layout.h"
+#include "HD44780.h"
 
 static const char* TAG = "example";
 #define PROMPT_STR CONFIG_IDF_TARGET
@@ -31,6 +32,12 @@ static const char* TAG = "example";
 #define MOUNT_PATH "/spiffs"
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
 #define MAX_FILES 32
+
+#define LCD_ADDR 0x27
+#define SDA_PIN  19
+#define SCL_PIN  18
+#define LCD_COLS 20
+#define LCD_ROWS 4
 
 static struct 
 {
@@ -87,6 +94,14 @@ static void initialize_nvs(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+}
+
+static void init_lcd(void)
+{
+    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    LCD_home();
+    LCD_clearScreen();
+    LCD_writeStr("----- 20x4 LCD -----");
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
@@ -309,11 +324,6 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
-// do_get_nvs_free
-// do_heap_regions
-// do better tasks dump
-// 
-
 void app_main(void)
 {
     esp_console_repl_t *repl = NULL;
@@ -325,9 +335,9 @@ void app_main(void)
     repl_config.max_cmdline_length = CONFIG_CONSOLE_MAX_COMMAND_LINE_LENGTH;
 
     initialize_nvs();
-
     initialize_filesystem();
     repl_config.history_save_path = HISTORY_PATH;
+    init_lcd();
 
     /* Register commands */
     esp_console_register_help_command();
