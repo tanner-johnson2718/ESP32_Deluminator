@@ -22,26 +22,31 @@
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "heap_memory_layout.h"
 #include "HD44780.h"
+#include "driver/gpio.h"
 
-static const char* TAG = "example";
+static const char* TAG = "ESP32 Deluminator";
 #define PROMPT_STR CONFIG_IDF_TARGET
 
-// FS defines
+// FS config
 #define MOUNT_PATH "/spiffs"
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
 #define MAX_FILES 32
 
+// LCD Config
 #define LCD_ADDR 0x27
 #define SDA_PIN  19
 #define SCL_PIN  18
 #define LCD_COLS 20
 #define LCD_ROWS 4
 
+// Button Config
 #define BUTTON_PIN 13
-#define SHORT_PRESS_MS 100
-#define LONG_PRESS_MS 400
+#define EVENT_QUEUE_LEN 32
+#define EVENT_QUEUE_PRIO 10
+static QueueHandle_t gpio_evt_queue = NULL;
 
 static struct 
 {
@@ -106,28 +111,43 @@ static void init_lcd(void)
     LCD_home();
     LCD_clearScreen();
     LCD_writeStr("Hello World!!");
+
+    ESP_LOGI(TAG, "%d by %d I2C LCD inited", LCD_ROWS, LCD_COLS);
 }
 
-static void init_center_button(void)
+static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
-    button_config_t gpio_btn_cfg = 
-    {
-        .type = BUTTON_TYPE_GPIO,
-        .long_press_ticks = CONFIG_BUTTON_LONG_PRESS_TIME_MS,
-        .short_press_ticks = CONFIG_BUTTON_SHORT_PRESS_TIME_MS,
-        .gpio_button_config = {
-            .gpio_num = 0,
-            .active_level = 0,
-            },
-    };
+    uint32_t a = 0;
+    xQueueSendFromISR(gpio_evt_queue, &a, NULL);
+}
 
-    button_handle_t gpio_btn = iot_button_create(&gpio_btn_cfg);
-    if(NULL == gpio_btn)
+static void event_q_poller(void* arg)
+{
+    uint32_t io_num;
+    for(;;)
     {
-        ESP_LOGE(TAG, "Button create failed");
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            printf("GPIO[%"PRIu32"] intr, val: %d\n", io_num, gpio_get_level(io_num));
+        }
     }
+}
 
-    iot_button_register_cb(gpio_btn, BUTTON_SINGLE_CLICK, button_single_click_cb,NULL);
+static void init_button(void)
+{
+    gpio_config_t gpio_conf = {};
+    gpio_conf.mode = GPIO_MODE_INPUT;
+    gpio_conf.pin_bit_mask = (1ULL << BUTTON_PIN);
+    gpio_conf.pull_up_en = 1;
+    gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
+
+    gpio_config(&gpio_conf);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
+    ESP_LOGI(TAG, "GPIO PIN %d ISR registered", BUTTON_PIN);
+
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
+
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
@@ -364,6 +384,7 @@ void app_main(void)
     initialize_filesystem();
     repl_config.history_save_path = HISTORY_PATH;
     init_lcd();
+    init_button();
 
     /* Register commands */
     esp_console_register_help_command();
