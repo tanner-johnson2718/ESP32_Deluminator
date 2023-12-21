@@ -13,17 +13,19 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_console.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_partition.h"
+#include "esp_spiffs.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "cmd_system.h"
 #include "cmd_nvs.h"
 #include "argtable3/argtable3.h"
-#include "esp_partition.h"
-#include "esp_spiffs.h"
+#include "heap_memory_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "heap_memory_layout.h"
 #include "HD44780.h"
 #include "driver/gpio.h"
 
@@ -36,6 +38,7 @@ static const char* TAG = "ESP32 Deluminator";
 #define MAX_FILES 32
 
 // LCD Config
+#define USE_LCD 0
 #define LCD_ADDR 0x27
 #define SDA_PIN  19
 #define SCL_PIN  18
@@ -47,6 +50,12 @@ static const char* TAG = "ESP32 Deluminator";
 #define EVENT_QUEUE_LEN 32
 #define EVENT_QUEUE_PRIO 10
 static QueueHandle_t gpio_evt_queue = NULL;
+
+// Wifi conf
+#define DEFAULT_SCAN_LIST_SIZE 16
+
+// RSSI Poller Config
+static int rssi_poll_running = 0;
 
 static struct 
 {
@@ -105,15 +114,17 @@ static void initialize_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
-static void init_lcd(void)
-{
-    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-    LCD_home();
-    LCD_clearScreen();
-    LCD_writeStr("Hello World!!");
+#if USE_LCD
+    static void init_lcd(void)
+    {
+        LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+        LCD_home();
+        LCD_clearScreen();
+        LCD_writeStr("Hello World!!");
 
-    ESP_LOGI(TAG, "%d by %d I2C LCD inited", LCD_ROWS, LCD_COLS);
-}
+        ESP_LOGI(TAG, "%d by %d I2C LCD inited", LCD_ROWS, LCD_COLS);
+    }
+#endif
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
@@ -148,6 +159,18 @@ static void init_button(void)
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 
+}
+
+static void init_wifi()
+{
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    assert(sta_netif);
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_start());
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
@@ -370,6 +393,52 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
+static int do_wifi_scan(int argc, char **argv)
+{
+    if(rssi_poll_running)
+    {
+        printf("Please Stop the RSSI poll task w/ stop_rssi_poll\n");
+        return 1;
+    }
+
+    uint16_t number = DEFAULT_SCAN_LIST_SIZE;
+    wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
+    uint16_t ap_count = 0;
+    memset(ap_info, 0, sizeof(ap_info));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    esp_wifi_scan_start(NULL, true);
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+
+    uint16_t i = 0;
+    for(; i < ap_count && i < DEFAULT_SCAN_LIST_SIZE; ++i)
+    {
+        printf("SSID    = %s\n", ap_info[i].ssid);
+        printf("BSSID   = %x:%x:%x:%x:%x:%x\n", ap_info[i].bssid[0], ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
+        printf("Channel = %d\n", ap_info[i].primary);
+        printf("RSSI    = %d\n", ap_info[i].rssi);
+        printf("\n");
+    }
+
+    return 0;
+}
+
+static void rssi_poll_task()
+{
+
+}
+
+static int do_start_rssi_poll(int argc, char **argv)
+{
+
+}
+
+static int do_stop_rssi_poll(int argc, char **argv)
+{
+
+}
+
 void app_main(void)
 {
     esp_console_repl_t *repl = NULL;
@@ -383,8 +452,13 @@ void app_main(void)
     initialize_nvs();
     initialize_filesystem();
     repl_config.history_save_path = HISTORY_PATH;
-    init_lcd();
+
+    #if USE_LCD
+        init_lcd();
+    #endif
+
     init_button();
+    init_wifi();
 
     /* Register commands */
     esp_console_register_help_command();
@@ -394,7 +468,8 @@ void app_main(void)
     register_one_arg_path_cmd("ls", "List files in a dir (path not used for now only 1 spiffs with flat layout)", &do_ls);
     register_one_arg_path_cmd("df", "Disk free on FS (path not used for now only 1 spiffs with flat layout)", &do_df);
     register_one_arg_path_cmd("cat", "cat contents of file", &do_cat);
-    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);    
+    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
+    register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_wifi_scan);    
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));

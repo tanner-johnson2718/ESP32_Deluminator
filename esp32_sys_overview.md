@@ -149,3 +149,49 @@ fclose(f);
 | 3.3V | Vin | Vin |
 | GND | GND | GND
 
+# Push button
+
+* Connct D13 to grount through button with 20kohm resitor
+    * [D13] <---> Res <---> Switch <---> GND
+* Configure the pin
+
+```C
+gpio_config_t gpio_conf = {};
+gpio_conf.mode = GPIO_MODE_INPUT;
+gpio_conf.pin_bit_mask = (1ULL << BUTTON_PIN);
+gpio_conf.pull_up_en = 1;
+gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
+gpio_config(&gpio_conf);
+```
+
+* Set up the ISR and a task to listen for events added by the ISR onto a queue
+* We register an isr that uses in ISR context add to Q function.
+* It adds whatever data was specified upon registry of the isr
+    * usually an IO num to indicate which pin triggered the ISR
+* Then we create a task that blocks until something is added to the queue
+
+```C
+static void IRAM_ATTR gpio_isr_handler(void* arg)
+{
+    uint32_t a = 0;
+
+    // Copies frome &a to the Q the number bytes indicated upon Q creation
+    xQueueSendFromISR(gpio_evt_queue, &a, NULL);
+}
+
+static void event_q_poller(void* arg)
+{
+    uint32_t io_num;
+    for(;;)
+    {
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            // process io event here
+        }
+    }
+}
+
+gpio_install_isr_service(0);
+gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
+gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
+```
