@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 struct repl_conf
 {
     char* history_save_path;

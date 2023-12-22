@@ -235,7 +235,10 @@ esp_event_post(MY_EVENT_BASE, ID, const void *event_data, size_t event_data_size
 esp_event_dump(FILE *file);
 ```
 
-Mystry Tasks created?
+* Mystry Tasks created?
+* Can we make our timer based events on the default event loop
+* Can we Add threads to the default event loop
+
 
 * [Event Loop API](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html)
 
@@ -246,3 +249,4 @@ Mystry Tasks created?
 * wifi api link
 * netif api link
 * describe use of console and the no_args thing
+* Doc each of the modules

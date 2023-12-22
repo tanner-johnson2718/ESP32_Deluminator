@@ -179,7 +179,7 @@ static esp_err_t I2C_init(void)
         .scl_io_num = conf.lcd_scl_pin,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 10000
+        .master.clk_speed = conf.i2c_clk_speed
     };
 	i2c_param_config(I2C_NUM_0, &i2c_conf);
 	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
