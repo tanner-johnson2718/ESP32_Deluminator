@@ -1,55 +1,52 @@
-/* Basic console example (esp_console_repl API)
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+// Entry Point for the ESP32 Delum. Some Notes on design:
+//
+// * Should stick to an async / event oriented design
+// * Should always use the default event loop semantics for async funcs
+// * PINs, Max file size, etc should be preprocessor macros here
+// * Every Module provides an init function that takes a module_conf_t type to pass defines
+// * These conf structs get copied into the static global space of that module
+// * Modules that wish to register repl commands export a register_module() func
 
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
 #include "esp_system.h"
 #include "esp_log.h"
-#include "esp_console.h"
 #include "esp_wifi.h"
-#include "esp_event.h"
 #include "esp_partition.h"
 #include "esp_spiffs.h"
+#include "esp_console.h"
+
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "cmd_system.h"
-#include "cmd_nvs.h"
-#include "argtable3/argtable3.h"
+
 #include "heap_memory_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
-#include "HD44780.h"
-#include "driver/gpio.h"
 
-static const char* TAG = "ESP32 Deluminator";
-#define PROMPT_STR "$~> "
+#include "repl.h"
+#include "user_interface.h"
+#include "cmd_system.h"
+#include "cmd_nvs.h"
 
-// FS config
-#define MOUNT_PATH "/spiffs"
+static const char* TAG = "APP MAIN";
+
+// REPL defines
+#define PROMPT_STR "$~>"
+#define MAX_CMD_LINE_LEN 80
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
+
+// FS defines
+#define MOUNT_PATH "/spiffs"
 #define MAX_FILES 32
 
-// LCD Config
-#define USE_LCD 0
+// User Interface defines
 #define LCD_ADDR 0x27
 #define SDA_PIN  19
 #define SCL_PIN  18
 #define LCD_COLS 20
 #define LCD_ROWS 4
-
-// Button Config
 #define BUTTON_PIN 13
-#define EVENT_QUEUE_LEN 32
-#define EVENT_QUEUE_PRIO 10
-static QueueHandle_t gpio_evt_queue = NULL;
 
 // AP Poller Config
 #define DEFAULT_SCAN_LIST_SIZE 16
@@ -68,12 +65,6 @@ static uint8_t scan_bssid[BSSID_LEN] = {0};
 static wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE] = {0};
 static uint16_t ap_count = 0;
 TaskHandle_t ap_poll_handle = 0;
-
-static struct 
-{
-    struct arg_end *end;
-} no_args;
-
 
 static void initialize_filesystem(void)
 {
@@ -120,57 +111,9 @@ static void initialize_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
-#if USE_LCD
-    static void init_lcd(void)
-    {
-        LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-        LCD_home();
-        LCD_clearScreen();
-        LCD_writeStr("Hello World!!");
-
-        ESP_LOGI(TAG, "%d by %d I2C LCD inited", LCD_ROWS, LCD_COLS);
-    }
-#endif
-
-static void IRAM_ATTR gpio_isr_handler(void* arg)
-{
-    uint32_t a = 0;
-    xQueueSendFromISR(gpio_evt_queue, &a, NULL);
-}
-
-static void event_q_poller(void* arg)
-{
-    uint32_t io_num;
-    for(;;)
-    {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            printf("GPIO[%"PRIu32"] intr, val: %d\n", io_num, gpio_get_level(io_num));
-        }
-    }
-}
-
-static void init_button(void)
-{
-    gpio_config_t gpio_conf = {};
-    gpio_conf.mode = GPIO_MODE_INPUT;
-    gpio_conf.pin_bit_mask = (1ULL << BUTTON_PIN);
-    gpio_conf.pull_up_en = 1;
-    gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
-
-    gpio_config(&gpio_conf);
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
-    ESP_LOGI(TAG, "GPIO PIN %d ISR registered", BUTTON_PIN);
-
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(event_q_poller, "eventQ poll", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
-
-}
-
 static void init_wifi()
 {
     ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
 
@@ -188,20 +131,6 @@ static void init_wifi()
     scan_conf.bssid = NULL;
     scan_conf.channel = 0;
     scan_conf.home_chan_dwell_time = 0;
-}
-
-static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
-{
-    no_args.end = arg_end(1);
-    const esp_console_cmd_t cmd = {
-        .command = cmd_str,
-        .help = desc,
-        .hint = NULL,
-        .func = func_ptr,
-        .argtable = &no_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-
 }
 
 static int do_part_table(int argc, char** argv)
@@ -274,115 +203,6 @@ static int do_cat(int argc, char **argv)
     }
 
     fclose(f);
-    return 0;
-}
-
-static int do_dump_soc_regions(int argc, char **argv)
-{
-    /*
-    typedef struct {
-        intptr_t start;  ///< Start address of the region
-        size_t size;            ///< Size of the region in bytes
-        size_t type;             ///< Type of the region (index into soc_memory_types array)
-        intptr_t iram_address; ///< If non-zero, is equivalent address in IRAM
-    } soc_memory_region_t;
-    */
-
-    if(argc != 3)
-    {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
-        return 1;
-    }
-
-    size_t num_regions = soc_get_available_memory_region_max_count();
-    soc_memory_region_t _regions[num_regions];
-    const soc_memory_region_t* regions;
-    int i;
-    const soc_memory_region_t *b;
-    const soc_memory_region_t *a;
-    size_t size = 0;
-
-    if(argv[1][0] == 'a')
-    {
-        num_regions = soc_memory_region_count;
-        regions = soc_memory_regions;
-
-    }
-    else if(argv[1][0] == 'f')
-    {
-        num_regions = soc_get_available_memory_regions(_regions);
-        regions = _regions;
-    }
-    else
-    {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
-        return 1;
-    }
-
-    if(argv[2][0] == 'e')
-    {
-        
-        for(i = 0; i < num_regions ; ++i)
-        {
-            b = &regions[i];   
-            printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
-               b->start, b->size, soc_memory_types[b->type].name, b->iram_address);
-        }
-    }
-    else if(argv[2][0] == 'c')
-    {
-        a = &regions[0];
-        size = a->size;
-        for(i = 1; i < num_regions ; ++i)
-        {
-            b = &regions[i];
-
-            // Found D/IRAM type assume to hit discontigous
-            if((b->type == 1) && (a->type != 1))
-            {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
-                       a->start, size, soc_memory_types[a->type].name);
-                a = b;
-                size = a->size;
-                continue;
-            }
-            else if(a->type == 1)
-            {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
-                        a->start, a->size, soc_memory_types[a->type].name, a->iram_address);
-                a = b;
-                size = a->size;
-                continue;
-            }
-
-            // Found contig region
-            if((a->start + size == b->start) && (a->type == b->type))
-            {
-                size += b->size;
-                continue;
-            }
-
-            // Found Dis cont, print and reset a
-            else
-            {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
-               a->start, size, soc_memory_types[a->type].name);
-               a=b;
-               size = a->size;
-               continue;
-            }
-        }
-
-        printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
-                     a->start, size, soc_memory_types[a->type].name);
-    }
-    else
-    {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
-        return 1;
-    }
-    
-
     return 0;
 }
 
@@ -464,11 +284,6 @@ static int do_dump_ap_info(int argc, char** argv)
     int i;
     for(i = 0; i < ap_count; ++i)
     {
-        // if(scan_conf.ssid != NULL && (strcmp((char*)scan_conf.ssid, (char*)ap_info[i].ssid) !=0))
-        // {
-        //     continue;
-        // }
-
         printf("SSID=%-32s   BSSID=%02x:%02x:%02x:%02x:%02x:%02x   Channel=%02d   RSSI=%03d\n", ap_info[i].ssid, ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5], ap_info[i].primary, ap_info[i].rssi);
     }
 
@@ -532,39 +347,37 @@ static int do_scan_poll(int argc, char** argv)
 
 void app_main(void)
 {
-    esp_console_repl_t *repl = NULL;
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
-    repl_config.prompt = PROMPT_STR;
-    repl_config.max_cmdline_length = CONFIG_CONSOLE_MAX_COMMAND_LINE_LENGTH;
 
+    user_interface_conf_t ui_conf = {LCD_ADDR,
+                                     SDA_PIN,
+                                     SCL_PIN,
+                                     LCD_ROWS,
+                                     LCD_COLS,
+                                     BUTTON_PIN
+                                    };
+
+    repl_conf_t repl_conf = {HISTORY_PATH, PROMPT_STR, MAX_CMD_LINE_LEN};
+
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
-    repl_config.history_save_path = HISTORY_PATH;
-
-    #if USE_LCD
-        init_lcd();
-    #endif
-
-    init_button();
+    init_repl(&repl_conf);
+    init_user_interface(&ui_conf);
     init_wifi();
 
     /* Register commands */
     esp_console_register_help_command();
     register_system();
     register_nvs();
+    register_user_interface();
+    register_misc_cmds();
     register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
     register_no_arg_cmd("ls", "List files on spiffs", &do_ls);
     register_no_arg_cmd("df", "Disk free on spiffs", &do_df);
     register_no_arg_cmd("cat", "cat contents of file", &do_cat);
-    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
     register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_dump_ap_info);
     register_no_arg_cmd("set_scan_target", "Set scope of scan: set_scan_target <all | ssid>", &do_set_scan_target);
     register_no_arg_cmd("scan_poll", "Poll ap scan: scan_poll <start | stop>", &do_scan_poll);
 
-    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
-    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+    start_repl();  // no return
 }

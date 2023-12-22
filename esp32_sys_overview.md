@@ -231,7 +231,8 @@ esp_event_handler_register(MY_EVENT_BASE, ID, func, arg);
 // Now we can post events (even in an ISR context)
 esp_event_post(MY_EVENT_BASE, ID, const void *event_data, size_t event_data_size, TickType_t ticks_to_wait);
 
-// Use this with 
+// Use this with CONFIG_ESP_EVENT_LOOP_PROFILING enabled
+esp_event_dump(FILE *file);
 ```
 
 Mystry Tasks created?
