@@ -5,6 +5,8 @@
 #include "repl.h"
 #include <string.h>
 #include "heap_memory_layout.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char* TAG = "REPL";
 
@@ -128,6 +130,37 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
+static int do_tasks(int argc, char **argv)
+{
+    const size_t bytes_per_task = 40; /* see vTaskList description */
+    char *task_list_buffer = malloc(uxTaskGetNumberOfTasks() * bytes_per_task);
+    if (task_list_buffer == NULL) {
+        ESP_LOGE(TAG, "failed to allocate buffer for vTaskList output");
+        return 1;
+    }
+    fputs("Task Name\tStatus\tPrio\tHWM\tTask#", stdout);
+#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
+    fputs("\tAffinity", stdout);
+#endif
+    fputs("\n", stdout);
+    vTaskList(task_list_buffer);
+    fputs(task_list_buffer, stdout);
+    free(task_list_buffer);
+    return 0;
+}
+
+static int do_free(int argc, char **argv)
+{
+    printf("%"PRIu32"\n", esp_get_free_heap_size());
+    return 0;
+}
+
+static int do_restart(int argc, char **argv)
+{
+    ESP_LOGI(TAG, "Restarting");
+    esp_restart();
+}
+
 //*****************************************************************************
 // PUBLIC
 //*****************************************************************************
@@ -155,13 +188,13 @@ void init_repl(repl_conf_t* _conf)
     repl_config.prompt = _conf->prompt;
     repl_config.max_cmdline_length = _conf->max_cmdline_length;
     repl_config.history_save_path = _conf->history_save_path;
+    repl_config.max_history_len = _conf->max_history_len;
 
     ESP_LOGI(TAG, "Console Inited. Saving history too %s", _conf->history_save_path);
 }
 
 void start_repl()
 {
-    
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
 
@@ -172,4 +205,8 @@ void start_repl()
 void register_misc_cmds(void)
 {
     register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
+    register_no_arg_cmd("tasks", "Print List of Tasks", &do_tasks);
+    register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
+    register_no_arg_cmd("restart", "SW Restart", &do_restart);
+    esp_console_register_help_command();
 }
