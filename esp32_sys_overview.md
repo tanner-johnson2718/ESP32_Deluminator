@@ -1,8 +1,11 @@
-# ESP 32 Systems Overview
+# ESP 32 Deluminator System Overview
 
 * Start with `system/console/basic/example` to give us an interactive starting point
 * Build, flash, and use USB UART as described [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
-* This document will describe some esp32 systems concepts in general but in particular will describe at a high level the esp32 project located at [esp32_build](../esp32_build/)
+* This document will describe the key esp32 systems concepts used by this project
+* And in particular will serve as the high level design doc for the coding and systems aspect of the ESP 32 Deluminator
+* The build and src location is here [esp32_build](../esp32_build/)
+* What thi
 
 # Flash Memory
 
@@ -196,10 +199,49 @@ gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 ```
 
-# Questions
+# Event Loop API
 
-* default sys event loop?
+The event loop API is a built in message passing async system built into the esp 32 dev env. There are two main subsytems:
+
+* User defined - make your own event loop
+* Default - creation and deletion hidden, used by WIFI API and you can use it to.
+
+The basic API is shown below for the default event loop but the semantics hold for user defined ones
+
+```C
+#include "esp_event.h"
+
+// Unclear what exactly the default settings are (define in the esp_event_loop_args_t struct)
+// But these bad bois create and clean up the default event loop
+esp_event_loop_create_default();
+esp_event_loop_delete_default();
+
+// Define a base to identify your class of events. Define an enum to map event_ids to enumerators
+ESP_EVENT_DECLARE_BASE(MY_EVENT_BASE);
+enum {                                       
+    ID0;
+    ID1;
+};
+
+// Here we can define a cb to be called when an event happens. Note we have macros for
+// all event bases and/or all event ids.
+void func(void* handler_args, esp_event_base_t base, int32_t id, void* event_data);
+esp_event_handler_register(MY_EVENT_BASE, ID, func, arg);
+
+// Now we can post events (even in an ISR context)
+esp_event_post(MY_EVENT_BASE, ID, const void *event_data, size_t event_data_size, TickType_t ticks_to_wait);
+
+// Use this with 
+```
+
+Mystry Tasks created?
+
+* [Event Loop API](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html)
+
+# Questions / TODO
+
 * wifi scanning?
 * how come we need todo a netif_init to use wifi? Or do we?
 * wifi api link
 * netif api link
+* describe use of console and the no_args thing
