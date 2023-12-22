@@ -30,7 +30,7 @@
 #include "driver/gpio.h"
 
 static const char* TAG = "ESP32 Deluminator";
-#define PROMPT_STR CONFIG_IDF_TARGET
+#define PROMPT_STR "$~> "
 
 // FS config
 #define MOUNT_PATH "/spiffs"
@@ -51,22 +51,28 @@ static const char* TAG = "ESP32 Deluminator";
 #define EVENT_QUEUE_PRIO 10
 static QueueHandle_t gpio_evt_queue = NULL;
 
-// Wifi conf
+// AP Poller Config
 #define DEFAULT_SCAN_LIST_SIZE 16
+#define SCAN_CONF_SHOW_HIDDEN 1
+#define SCAN_CONF_SCAN_TYPE WIFI_SCAN_TYPE_ACTIVE
+#define SCAN_CONF_PASSIVE_SCAN_TIME 360
+#define SCAN_CONF_ACTIVE_MAX 100
+#define MAX_SSID_LEN 32
+#define BSSID_LEN 6
+#define AP_POLL_PRIO tskIDLE_PRIORITY
+#define AP_POLL_DELAY_MS 500
 
-// RSSI Poller Config
-static int rssi_poll_running = 0;
+static wifi_scan_config_t scan_conf = {0};
+static uint8_t scan_ssid[MAX_SSID_LEN + 1] = {0};
+static uint8_t scan_bssid[BSSID_LEN] = {0};
+static wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE] = {0};
+static uint16_t ap_count = 0;
+TaskHandle_t ap_poll_handle = 0;
 
 static struct 
 {
     struct arg_end *end;
 } no_args;
-
-static struct 
-{
-    struct arg_str *path;
-    struct arg_end *end;
-} ls_args;
 
 
 static void initialize_filesystem(void)
@@ -157,7 +163,7 @@ static void init_button(void)
     ESP_LOGI(TAG, "GPIO PIN %d ISR registered", BUTTON_PIN);
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
+    xTaskCreate(event_q_poller, "eventQ poll", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 
 }
 
@@ -171,6 +177,17 @@ static void init_wifi()
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+
+    scan_conf.show_hidden = SCAN_CONF_SHOW_HIDDEN;
+    scan_conf.scan_type = SCAN_CONF_SCAN_TYPE;
+    scan_conf.scan_time.passive = SCAN_CONF_PASSIVE_SCAN_TIME;
+    scan_conf.scan_time.active.min = 0;
+    scan_conf.scan_time.active.max = SCAN_CONF_ACTIVE_MAX;
+    scan_conf.ssid = NULL;
+    scan_conf.bssid = NULL;
+    scan_conf.channel = 0;
+    scan_conf.home_chan_dwell_time = 0;
 }
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
@@ -185,21 +202,6 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 
-}
-
-static void register_one_arg_path_cmd(char* cmd_str, char* desc, void* func_ptr)
-{
-    ls_args.end = arg_end(1);
-    ls_args.path = arg_str0(NULL, NULL, "path",
-                                      desc);
-    const esp_console_cmd_t cmd = {
-        .command = cmd_str,
-        .help = "List contents of current dir",
-        .hint = NULL,
-        .func = func_ptr,
-        .argtable = &ls_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 }
 
 static int do_part_table(int argc, char** argv)
@@ -221,28 +223,14 @@ static int do_part_table(int argc, char** argv)
     return 0;
 }
 
-static const char* parse_args_one_arg_path(int argc, char** argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **)&ls_args);
-
-    if (nerrors != 0) {
-        arg_print_errors(stderr, ls_args.end, argv[0]);
-        return 0;
-    }
-
-    return ls_args.path->sval[0];
-}
-
 static int do_ls(int argc, char** argv)
 { 
     
     DIR *d;
     struct dirent *dir;
-    const char* path = parse_args_one_arg_path(argc, argv);
-    path = MOUNT_PATH;
 
-    printf("%s\n", path);
-    d = opendir(path);
+    printf("%s\n", MOUNT_PATH);
+    d = opendir(MOUNT_PATH);
     if(d)
     {
         while((dir = readdir(d))!=NULL)
@@ -256,7 +244,6 @@ static int do_ls(int argc, char** argv)
 
 static int do_df(int argc, char **argv)
 {
-    // const char* path = parse_args_one_arg_path(argc, argv);
     size_t total = 0, used = 0;
     esp_spiffs_info(NULL, &total, &used);
     printf("Partition size: total: %d, used: %d\n", total, used);
@@ -266,7 +253,13 @@ static int do_df(int argc, char **argv)
 
 static int do_cat(int argc, char **argv)
 {
-    const char* path = parse_args_one_arg_path(argc, argv);
+    if(argc != 2)
+    {
+        printf("Usage: cat <path>\n");
+        return 1;
+    }
+
+    const char* path = argv[1];
     FILE* f = fopen(path, "r");
     char line[81];
     
@@ -305,8 +298,8 @@ static int do_dump_soc_regions(int argc, char **argv)
     soc_memory_region_t _regions[num_regions];
     const soc_memory_region_t* regions;
     int i;
-    soc_memory_region_t *b;
-    soc_memory_region_t *a;
+    const soc_memory_region_t *b;
+    const soc_memory_region_t *a;
     size_t size = 0;
 
     if(argv[1][0] == 'a')
@@ -393,50 +386,148 @@ static int do_dump_soc_regions(int argc, char **argv)
     return 0;
 }
 
-static int do_wifi_scan(int argc, char **argv)
+static void update_ap_info()
 {
-    if(rssi_poll_running)
+    uint16_t max_ap_count = DEFAULT_SCAN_LIST_SIZE;
+    memset(ap_info, 0, sizeof(ap_info));
+    esp_wifi_scan_start(&scan_conf, true);
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    assert(ap_count < DEFAULT_SCAN_LIST_SIZE);
+    ESP_ERROR_CHECK(esp_wifi_scan_stop());
+}
+
+static void set_scan_all()
+{
+    scan_conf.ssid = NULL;
+    scan_conf.bssid = NULL;
+    scan_conf.channel = 0;
+}
+
+static int32_t find_ap(char* ssid)
+{
+    int32_t i;
+    for(i = 0; i < ap_count; ++i)
     {
-        printf("Please Stop the RSSI poll task w/ stop_rssi_poll\n");
+        if(!strcmp(ssid, (char*)ap_info[i].ssid))
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int do_set_scan_target(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        printf("Usage: set_scan <all | ssid>");
         return 1;
     }
 
-    uint16_t number = DEFAULT_SCAN_LIST_SIZE;
-    wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
-    uint16_t ap_count = 0;
-    memset(ap_info, 0, sizeof(ap_info));
+    wifi_mode_t mode;
+    ESP_ERROR_CHECK(esp_wifi_get_mode(&mode));
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    esp_wifi_scan_start(NULL, true);
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    set_scan_all();
+    update_ap_info();
 
-    uint16_t i = 0;
-    for(; i < ap_count && i < DEFAULT_SCAN_LIST_SIZE; ++i)
+    if(strcmp(argv[1], "all") ==  0)
     {
-        printf("SSID    = %s\n", ap_info[i].ssid);
-        printf("BSSID   = %x:%x:%x:%x:%x:%x\n", ap_info[i].bssid[0], ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
-        printf("Channel = %d\n", ap_info[i].primary);
-        printf("RSSI    = %d\n", ap_info[i].rssi);
-        printf("\n");
+        printf("Scan scope set to all\n");
+        return 0;
+    }
+
+    int32_t i = find_ap(argv[1]);
+    if(i < 0)
+    {
+        printf("Could not find ssid = %s, scan scope remains at all\n", argv[1]);
+        return 1;
+    }
+
+    scan_conf.channel = ap_info[i].primary;
+    strncpy((char*)scan_ssid,(char*) ap_info[i].ssid, MAX_SSID_LEN);
+    memcpy(scan_bssid, ap_info[i].bssid, BSSID_LEN);
+
+    scan_conf.ssid = scan_ssid;
+    scan_conf.bssid = scan_bssid;
+
+    printf("Scan scope set to %s\n", argv[1]);
+
+    return 0;
+}
+
+static int do_dump_ap_info(int argc, char** argv)
+{
+    update_ap_info();
+
+    int i;
+    for(i = 0; i < ap_count; ++i)
+    {
+        // if(scan_conf.ssid != NULL && (strcmp((char*)scan_conf.ssid, (char*)ap_info[i].ssid) !=0))
+        // {
+        //     continue;
+        // }
+
+        printf("SSID=%-32s   BSSID=%02x:%02x:%02x:%02x:%02x:%02x   Channel=%02d   RSSI=%03d\n", ap_info[i].ssid, ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5], ap_info[i].primary, ap_info[i].rssi);
     }
 
     return 0;
 }
 
-static void rssi_poll_task()
+static void ap_poll_task(void* arg)
 {
-
+    for(;;)
+    {
+        do_dump_ap_info(0, NULL);
+        vTaskDelay(AP_POLL_DELAY_MS / portTICK_PERIOD_MS);
+    }
 }
 
-static int do_start_rssi_poll(int argc, char **argv)
+static int do_scan_poll(int argc, char** argv)
 {
+    if(argc != 2)
+    {
+        printf("Usage: scan_poll <start | stop>\n");
+        return 1;
+    }
 
-}
+    int start = strcmp(argv[1], "start");
+    int stop = strcmp(argv[1], "stop");
 
-static int do_stop_rssi_poll(int argc, char **argv)
-{
+    if(start && stop)
+    {
+        printf("Usage: scan_poll <start | stop>\n");
+        return 1;
+    }
 
+    if(!start)
+    {
+        if(ap_poll_handle != NULL)
+        {
+            printf("Scan poll already running\n");
+            return 1;
+        }
+
+        xTaskCreate( ap_poll_task, "ap_poll_task", 2048, NULL, AP_POLL_PRIO, &ap_poll_handle );
+        assert(ap_poll_handle != NULL);
+        return 0;
+    }
+
+    if(!stop)
+    {
+        if(ap_poll_handle == NULL)
+        {
+            printf("Scan poll already stopped\n");
+            return 1;
+        }
+
+        vTaskDelete( ap_poll_handle );
+        ap_poll_handle = NULL;
+        return 0;
+    }
+
+    return 0;
 }
 
 void app_main(void)
@@ -446,7 +537,7 @@ void app_main(void)
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */
-    repl_config.prompt = PROMPT_STR ">";
+    repl_config.prompt = PROMPT_STR;
     repl_config.max_cmdline_length = CONFIG_CONSOLE_MAX_COMMAND_LINE_LENGTH;
 
     initialize_nvs();
@@ -465,11 +556,13 @@ void app_main(void)
     register_system();
     register_nvs();
     register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
-    register_one_arg_path_cmd("ls", "List files in a dir (path not used for now only 1 spiffs with flat layout)", &do_ls);
-    register_one_arg_path_cmd("df", "Disk free on FS (path not used for now only 1 spiffs with flat layout)", &do_df);
-    register_one_arg_path_cmd("cat", "cat contents of file", &do_cat);
+    register_no_arg_cmd("ls", "List files on spiffs", &do_ls);
+    register_no_arg_cmd("df", "Disk free on spiffs", &do_df);
+    register_no_arg_cmd("cat", "cat contents of file", &do_cat);
     register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
-    register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_wifi_scan);    
+    register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_dump_ap_info);
+    register_no_arg_cmd("set_scan_target", "Set scope of scan: set_scan_target <all | ssid>", &do_set_scan_target);
+    register_no_arg_cmd("scan_poll", "Poll ap scan: scan_poll <start | stop>", &do_scan_poll);
 
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));

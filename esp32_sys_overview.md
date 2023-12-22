@@ -195,3 +195,11 @@ gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
 gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 ```
+
+# Questions
+
+* default sys event loop?
+* wifi scanning?
+* how come we need todo a netif_init to use wifi? Or do we?
+* wifi api link
+* netif api link
