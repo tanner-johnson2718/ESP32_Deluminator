@@ -1,36 +1,120 @@
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/time.h>
 #include "driver/gpio.h"
+#include "driver/i2c.h"
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "repl.h"
-#include "esp_event.h"
 #include "user_interface.h"
-#include <driver/i2c.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <stdio.h>
-#include "sdkconfig.h"
 #include "rom/ets_sys.h"
-#include <esp_log.h>
 
 static const char* TAG = "UI";
 ESP_EVENT_DEFINE_BASE(USER_INPUT_EVENT);
-#define USE_LCD 0
+#define USE_LCD 1
 static user_interface_conf_t conf;
+
+#define UI_EVENT_HANDLER_TIMEOUT 300
+#define UI_EVENT_HANDLER_PRIO 10
+#define UI_EVENT_Q_SIZE 32
+#define BUTTON_SHORT_PRESS_MAX_US 1000*1000
+
+uint8_t button_ISR_event = 0;
+QueueHandle_t ui_event_q;
+static int button_presses_in_interval = 0;
+
+void button_short_press(void);
+void button_long_press(void);
+
+static void LCD_setCursor(uint8_t col, uint8_t row);
+static void LCD_pulseEnable(uint8_t data);
+static void LCD_writeByte(uint8_t data, uint8_t mode);
+static void LCD_writeNibble(uint8_t nibble, uint8_t mode);
+static void LCD_clearScreen(void);
+static void LCD_home(void);
+static void LCD_writeStr(char* str);
+static void LCD_writeChar(char c);
+
+static void ui_event_handler(void* arg)
+{
+    uint8_t io_num;
+    struct timeval tv_now, tv_then;
+    for(;;)
+    {
+        if(xQueueReceive(ui_event_q, &io_num, UI_EVENT_HANDLER_TIMEOUT / portTICK_PERIOD_MS)) 
+        {
+            if(io_num == button_ISR_event)
+            {
+                if(button_presses_in_interval == 0)
+                {
+                    gettimeofday(&tv_now, NULL);
+                }
+
+                ++button_presses_in_interval;
+            }
+        }
+        else
+        {
+            if(button_presses_in_interval == 0)
+            {
+                continue;
+            }
+
+            gettimeofday(&tv_then, NULL);
+            tv_then.tv_sec -= tv_now.tv_sec;
+            tv_then.tv_usec -= tv_now.tv_usec;
+
+            if(tv_then.tv_usec < 0)
+            {
+                tv_then.tv_usec += 1000*1000;
+                tv_then.tv_sec -= 1;
+            }
+
+            tv_then.tv_usec += 1000*1000*tv_then.tv_sec;
+            assert(tv_then.tv_usec > 0);
+
+            if(tv_then.tv_usec < BUTTON_SHORT_PRESS_MAX_US)
+            {
+                button_short_press();
+                ESP_LOGI(TAG, "Short Press (%ld ms)", tv_then.tv_usec / 1000);
+            }
+            else
+            {
+                button_long_press();
+                ESP_LOGI(TAG, "Long Press (%ld ms)", tv_then.tv_usec / 1000);
+            }
+            
+            button_presses_in_interval = 0;
+        }
+    }
+}
 
 //*****************************************************************************
 // BUTTON PRVATE
 //*****************************************************************************
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
+void button_long_press(void)
 {
-    ESP_ERROR_CHECK(esp_event_post(USER_INPUT_EVENT, BUTTON_PUSHED, NULL, 0, 0));
+    LCD_home();
+    LCD_clearScreen();
+    LCD_writeStr("LONG DADDY");
 }
 
-void button_push_handler(void* handler_args, esp_event_base_t base, int32_t id, void* event_data)
+void button_short_press(void)
 {
-    printf("YO from button handler\n");
+    LCD_home();
+    LCD_clearScreen();
+    LCD_writeStr("SHORT BOI");
+}
+
+static void IRAM_ATTR button_isr_handler(void* arg)
+{
+    // Copies frome &a to the Q the number bytes indicated upon Q creation
+    xQueueSendFromISR(ui_event_q, arg, NULL);
 }
 
 static void init_button(void)
@@ -39,20 +123,17 @@ static void init_button(void)
     gpio_conf.mode = GPIO_MODE_INPUT;
     gpio_conf.pin_bit_mask = (1ULL << conf.button_pin);
     gpio_conf.pull_up_en = 1;
-    gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
+    gpio_conf.intr_type = GPIO_INTR_NEGEDGE;
 
     gpio_config(&gpio_conf);
     gpio_install_isr_service(0);
-    gpio_isr_handler_add(conf.button_pin, gpio_isr_handler, NULL);
+    gpio_isr_handler_add(conf.button_pin, button_isr_handler, &button_ISR_event);
     ESP_LOGI(TAG, "GPIO PIN %d ISR registered for ui button", conf.button_pin);
-
-    ESP_ERROR_CHECK(esp_event_handler_register(USER_INPUT_EVENT, BUTTON_PUSHED, button_push_handler, NULL));
-
 }
 
 static int do_toggle_button(int argc, char** argv)
 {
-    ESP_ERROR_CHECK(esp_event_post(USER_INPUT_EVENT, BUTTON_PUSHED, NULL, 0, 0));
+    xQueueSend(ui_event_q, &button_ISR_event, 0);
     return 0;
 }
 
@@ -96,35 +177,35 @@ static int do_toggle_button(int argc, char** argv)
 // P6 -> D6
 // P7 -> D7
 
-void LCD_setCursor(uint8_t col, uint8_t row)
+static void LCD_setCursor(uint8_t col, uint8_t row)
 {
-    if (row > conf.lcd_num_rows - 1) {
-        ESP_LOGE(tag, "Cannot write to row %d. Please select a row in the range (0, %d)", row, conf.lcd_num_rows-1);
-        row = conf.lcd_num_rows - 1;
+    if (row > conf.lcd_num_row - 1) {
+        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, conf.lcd_num_row-1);
+        row = conf.lcd_num_row - 1;
     }
     uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
     LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND);
 }
 
-void LCD_writeChar(char c)
+static void LCD_writeChar(char c)
 {
     LCD_writeByte(c, LCD_WRITE);                                        // Write data to DDRAM
 }
 
-void LCD_writeStr(char* str)
+static void LCD_writeStr(char* str)
 {
     while (*str) {
         LCD_writeChar(*str++);
     }
 }
 
-void LCD_home(void)
+static void LCD_home(void)
 {
     LCD_writeByte(LCD_HOME, LCD_COMMAND);
     vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
 }
 
-void LCD_clearScreen(void)
+static void LCD_clearScreen(void)
 {
     LCD_writeByte(LCD_CLEAR, LCD_COMMAND);
     vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
@@ -219,15 +300,13 @@ void LCD_init()
 
 static void init_lcd(void)
 {
-    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_rows, conf.lcd_num_cols);
+    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col);
     LCD_home();
     LCD_clearScreen();
     LCD_writeStr("Hello World!!");
-    ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_rows, conf.lcd_num_cols);
+    ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_row, conf.lcd_num_col);
     ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_addr);
 }
-
-
 
 #endif
 
@@ -237,7 +316,14 @@ static void init_lcd(void)
 
 void init_user_interface(user_interface_conf_t* _conf)
 {
-    memcpy(&conf, _conf, sizeof(user_interface_conf_t));
+    memcpy(&conf, _conf, sizeof(user_interface_conf_t));    
+    
+    ui_event_q = xQueueCreate(UI_EVENT_Q_SIZE, sizeof(uint8_t));
+    assert(ui_event_q);
+    
+    xTaskCreate(ui_event_handler, "ui event handler", 2048, NULL, UI_EVENT_HANDLER_PRIO, NULL);
+    ESP_LOGI(TAG, "UI Event Handler Launched");
+
     init_button();
     
     #if USE_LCD

@@ -1,7 +1,6 @@
 // Entry Point for the ESP32 Delum. Some Notes on design:
 //
 // * Should stick to an async / event oriented design
-// * Should always use the default event loop semantics for async funcs
 // * PINs, Max file size, etc should be preprocessor macros here
 // * Every Module provides an init function that takes a module_conf_t type to pass defines
 // * These conf structs get copied into the static global space of that module

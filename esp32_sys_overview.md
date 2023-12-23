@@ -5,9 +5,10 @@
 * This document will describe the key esp32 systems concepts used by this project
 * And in particular will serve as the high level design doc for the coding and systems aspect of the ESP 32 Deluminator
 * The build and src location is here [esp32_build](../esp32_build/)
-* What thi
 
 # Flash Memory
+
+* [module code](./esp32_build/main/flash_man.c)
 
 ## Layout
 
@@ -67,7 +68,121 @@ fclose(f);
 
 * [SPIFFS API ref](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/spiffs.html)
 
-# Early Start Up
+# User Interface
+
+* [module code](./esp32_build/main/user_interface.c)
+
+# I2C Library for LCD 2004 w/ PCF8547T IO Expander
+
+* https://github.com/maxsydney/ESP32-HD44780
+* Take c and header file from this and add the c file to the CMakeLists.txt SRC list
+* set master clock to 10000
+* Use the following Pinout
+
+| ESP Pin | LCD Pin | Func |
+| --- | --- | --- |
+| 18 | SCL | SCL |
+| 19 | SDA | SDA |
+| 3.3V | Vin | Vin |
+| GND | GND | GND
+
+# Event Loop API
+
+The event loop API is a built in message passing async system built into the esp 32 dev env. There are two main subsytems:
+
+* User defined - make your own event loop
+* Default - creation and deletion hidden, used by WIFI API and you can use it to.
+
+The basic API is shown below for the default event loop but the semantics hold for user defined ones
+
+```C
+#include "esp_event.h"
+
+// Unclear what exactly the default settings are (define in the esp_event_loop_args_t struct)
+// But these bad bois create and clean up the default event loop
+esp_event_loop_create_default();
+esp_event_loop_delete_default();
+
+// Define a base to identify your class of events. Define an enum to map event_ids to enumerators
+ESP_EVENT_DECLARE_BASE(MY_EVENT_BASE);
+enum {                                       
+    ID0;
+    ID1;
+};
+
+// Here we can define a cb to be called when an event happens. Note we have macros for
+// all event bases and/or all event ids.
+void func(void* handler_args, esp_event_base_t base, int32_t id, void* event_data);
+esp_event_handler_register(MY_EVENT_BASE, ID, func, arg);
+
+// Now we can post events (even in an ISR context)
+esp_event_post(MY_EVENT_BASE, ID, const void *event_data, size_t event_data_size, TickType_t ticks_to_wait);
+
+// Use this with CONFIG_ESP_EVENT_LOOP_PROFILING enabled
+esp_event_dump(FILE *file);
+```
+
+* [Event Loop API](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html)]
+* Note Event loop appears to only dispatch one thread to process events
+* Meaning an event handler need not handle reentrant cases cause it will never reenter 
+
+# Push button with Debouncing
+
+* Connct D13 to grount through button with 20kohm resitor
+    * [D13] <---> Res <---> Switch <---> GND
+* Configure the pin
+
+```C
+gpio_config_t gpio_conf = {};
+gpio_conf.mode = GPIO_MODE_INPUT;
+gpio_conf.pin_bit_mask = (1ULL << BUTTON_PIN);
+gpio_conf.pull_up_en = 1;
+gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
+gpio_config(&gpio_conf);
+```
+
+* Set up the ISR and a task to listen for events added by the ISR onto a queue
+* We register an isr that uses in ISR context add to Q function.
+* It adds whatever data was specified upon registry of the isr
+    * usually an IO num to indicate which pin triggered the ISR
+* Then we create a task that blocks until something is added to the queue
+
+```C
+static void IRAM_ATTR gpio_isr_handler(void* arg)
+{
+    uint32_t a = 0;
+
+    // Copies frome &a to the Q the number bytes indicated upon Q creation
+    xQueueSendFromISR(gpio_evt_queue, &a, NULL);
+}
+
+static void event_q_poller(void* arg)
+{
+    uint32_t io_num;
+    for(;;)
+    {
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            // process io event here
+        }
+    }
+}
+
+gpio_install_isr_service(0);
+gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
+gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
+```
+
+# Wifi
+
+* wifi scanning?
+* how come we need todo a netif_init to use wifi? Or do we?
+* wifi api link
+* netif api link
+
+# Generic ESP32 Systems Notes
+
+## Early Start Up
 
 * Bootstage 1
     * Reset vector code located in ROM and is unchangable
@@ -133,120 +248,7 @@ fclose(f);
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
 
-# Tasks / FreeRTOS
+## Tasks / FreeRTOS
 
 * [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
 * [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
-
-# I2C Library for LCD 2004 w/ PCF8547T IO Expander
-
-* https://github.com/maxsydney/ESP32-HD44780
-* Take c and header file from this and add the c file to the CMakeLists.txt SRC list
-* set master clock to 10000
-* Use the following Pinout
-
-| ESP Pin | LCD Pin | Func |
-| --- | --- | --- |
-| 18 | SCL | SCL |
-| 19 | SDA | SDA |
-| 3.3V | Vin | Vin |
-| GND | GND | GND
-
-# Push button
-
-* Connct D13 to grount through button with 20kohm resitor
-    * [D13] <---> Res <---> Switch <---> GND
-* Configure the pin
-
-```C
-gpio_config_t gpio_conf = {};
-gpio_conf.mode = GPIO_MODE_INPUT;
-gpio_conf.pin_bit_mask = (1ULL << BUTTON_PIN);
-gpio_conf.pull_up_en = 1;
-gpio_conf.intr_type = GPIO_INTR_ANYEDGE;
-gpio_config(&gpio_conf);
-```
-
-* Set up the ISR and a task to listen for events added by the ISR onto a queue
-* We register an isr that uses in ISR context add to Q function.
-* It adds whatever data was specified upon registry of the isr
-    * usually an IO num to indicate which pin triggered the ISR
-* Then we create a task that blocks until something is added to the queue
-
-```C
-static void IRAM_ATTR gpio_isr_handler(void* arg)
-{
-    uint32_t a = 0;
-
-    // Copies frome &a to the Q the number bytes indicated upon Q creation
-    xQueueSendFromISR(gpio_evt_queue, &a, NULL);
-}
-
-static void event_q_poller(void* arg)
-{
-    uint32_t io_num;
-    for(;;)
-    {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-            // process io event here
-        }
-    }
-}
-
-gpio_install_isr_service(0);
-gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
-gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
-```
-
-# Event Loop API
-
-The event loop API is a built in message passing async system built into the esp 32 dev env. There are two main subsytems:
-
-* User defined - make your own event loop
-* Default - creation and deletion hidden, used by WIFI API and you can use it to.
-
-The basic API is shown below for the default event loop but the semantics hold for user defined ones
-
-```C
-#include "esp_event.h"
-
-// Unclear what exactly the default settings are (define in the esp_event_loop_args_t struct)
-// But these bad bois create and clean up the default event loop
-esp_event_loop_create_default();
-esp_event_loop_delete_default();
-
-// Define a base to identify your class of events. Define an enum to map event_ids to enumerators
-ESP_EVENT_DECLARE_BASE(MY_EVENT_BASE);
-enum {                                       
-    ID0;
-    ID1;
-};
-
-// Here we can define a cb to be called when an event happens. Note we have macros for
-// all event bases and/or all event ids.
-void func(void* handler_args, esp_event_base_t base, int32_t id, void* event_data);
-esp_event_handler_register(MY_EVENT_BASE, ID, func, arg);
-
-// Now we can post events (even in an ISR context)
-esp_event_post(MY_EVENT_BASE, ID, const void *event_data, size_t event_data_size, TickType_t ticks_to_wait);
-
-// Use this with CONFIG_ESP_EVENT_LOOP_PROFILING enabled
-esp_event_dump(FILE *file);
-```
-
-* Mystry Tasks created?
-* Can we make our timer based events on the default event loop
-* Can we Add threads to the default event loop
-
-
-* [Event Loop API](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html)
-
-# Questions / TODO
-
-* wifi scanning?
-* how come we need todo a netif_init to use wifi? Or do we?
-* wifi api link
-* netif api link
-* describe use of console and the no_args thing
-* Doc each of the modules
