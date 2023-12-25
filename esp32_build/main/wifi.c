@@ -219,22 +219,23 @@ void scan_ui_cmd(void)
         line_counter++;
         ESP_LOGI(TAG, "%s", line_buff);
 
-        sprintf(line_buff, "%02x:%02x:%02x:%02x:%02x:%02x", ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
+        snprintf(line_buff,19, "%02x:%02x:%02x:%02x:%02x:%02x", ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
         push_to_line_buffer(line_counter, line_buff);
         line_counter++;
         ESP_LOGI(TAG, "%s", line_buff);
 
-        sprintf(line_buff, "Channel=%02d", ap_info[i].primary);
+        snprintf(line_buff,19, "Channel=%02d", ap_info[i].primary);
         push_to_line_buffer(line_counter, line_buff);
         line_counter++;
         ESP_LOGI(TAG, "%s", line_buff);
 
-        sprintf(line_buff, "RSSI=%02d", ap_info[i].rssi);
+        snprintf(line_buff,19, "RSSI=%02d", ap_info[i].rssi);
         push_to_line_buffer(line_counter, line_buff);
         line_counter++;
         ESP_LOGI(TAG, "%s", line_buff);
 
-        line_buff[0] = (char) 0;
+        line_buff[0] = ' ';
+        line_buff[1] = (char) 0;
         push_to_line_buffer(line_counter, line_buff);
         line_counter++;
         ESP_LOGI(TAG, "%s", line_buff);

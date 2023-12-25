@@ -32,7 +32,7 @@
 #define LCD_ADDR 0x27
 #define LCD_COLS 20
 #define LCD_ROWS 4
-#define I2C_CLK_SPEED 10000
+#define I2C_CLK_SPEED 50000
 #define MAX_NUM_UI_CMDS 32
 #define MAX_UI_LOG_LINES 128
 
