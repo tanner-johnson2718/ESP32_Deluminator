@@ -32,6 +32,8 @@
 #define LCD_COLS 20
 #define LCD_ROWS 4
 #define I2C_CLK_SPEED 10000
+#define MAX_NUM_UI_CMDS 128
+#define MAX_UI_LOG_LINES 1024
 
 // Wifi defines
 #define AP_POLL_PRIO tskIDLE_PRIORITY
@@ -49,7 +51,9 @@ void app_main(void)
                                      BUTTON_PIN,
                                      I2C_CLK_SPEED,
                                      ROT_A_PIN,
-                                     ROT_B_PIN
+                                     ROT_B_PIN,
+                                     MAX_NUM_UI_CMDS,
+                                     MAX_UI_LOG_LINES
                                     };
 
     repl_conf_t repl_conf = {HISTORY_PATH, PROMPT_STR, MAX_CMD_LINE_LEN, MAX_HISTORY_LEN};

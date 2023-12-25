@@ -29,9 +29,12 @@ static uint8_t button_ISR_event = 0;
 static uint8_t rot_a_ISR_event = 1;
 static uint8_t rot_b_ISR_event = 2;
 static uint8_t rot_first = 0;
+static uint8_t rot_invert = 1;
 
 static void button_short_press(void);
 static void button_long_press(void);
+static void rot_left(void);
+static void rot_right(void);
 
 static void LCD_setCursor(uint8_t col, uint8_t row);
 static void LCD_pulseEnable(uint8_t data);
@@ -41,6 +44,17 @@ static void LCD_clearScreen(void);
 static void LCD_home(void);
 static void LCD_writeStr(char* str);
 static void LCD_writeChar(char c);
+
+void update_display(void);
+
+typedef void (*cb_t)(void);
+static char* cmd_list;
+static cb_t* call_back_list;
+static char* current_log;
+static uint8_t num_cmds = 0;
+static uint8_t in_menu = 1;
+static uint8_t cursor_pos_on_screen = 0;
+static uint8_t index_of_first_line = 0; 
 
 static void IRAM_ATTR ui_isr_handler(void* arg)
 {
@@ -66,8 +80,6 @@ static void ui_event_handler(void* arg)
 {
     uint8_t io_num;
     struct timeval tv_now, tv_then;
-    struct timeval tv_now_a, tv_then_a;
-    struct timeval tv_now_b, tv_then_b;
     uint16_t button_presses_in_interval = 0;
     uint16_t rot_a_triggers_in_interval = 0;
     uint16_t rot_b_triggers_in_interval = 0;
@@ -136,15 +148,26 @@ static void ui_event_handler(void* arg)
 
                 if(rot_first == rot_a_ISR_event)
                 {
-                    printf("A\n");
+                    if(!rot_invert)
+                    {
+                        rot_left();
+                    }
+                    else
+                    {
+                        rot_right();
+                    }
+                    
                 }
                 else if(rot_first == rot_b_ISR_event)
                 {
-                    printf("B\n");
-                }
-                else
-                {
-                    printf("WTF\n");
+                    if(!rot_invert)
+                    {
+                        rot_right();
+                    }
+                    else
+                    {
+                        rot_left();
+                    }
                 }
 
                 rot_first = 0;
@@ -362,6 +385,58 @@ static void init_lcd(void)
 // ROT PRIVATE
 //*****************************************************************************
 
+static void rot_left(void)
+{
+    // left = up
+    if(cursor_pos_on_screen == 0 && index_of_first_line == 0)
+    {
+        return;
+    }
+
+    if(cursor_pos_on_screen == 0 && index_of_first_line > 0)
+    {
+        index_of_first_line--;
+        update_display();
+        return;
+    }
+    
+    if(cursor_pos_on_screen > 0 && cursor_pos_on_screen < conf.lcd_num_row)
+    {
+        // no need to update whats on screen just move cursor
+        cursor_pos_on_screen--;
+        update_display();
+        return;
+    }
+}
+
+static void rot_right(void)
+{
+    // right = down
+    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) == (num_cmds-1)) )
+    {
+        return;
+    }
+
+    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) < (num_cmds-1)))
+    {
+        ++index_of_first_line;
+        update_display();
+        return;
+    }
+
+    if((cursor_pos_on_screen < (conf.lcd_num_row-1)))
+    {
+        if(index_of_first_line + cursor_pos_on_screen == num_cmds - 1)
+        {
+            return;
+        }
+
+        ++cursor_pos_on_screen;
+        update_display();
+        return;
+    }
+}
+
 static void init_rot(void)
 {
     gpio_isr_handler_add(conf.rot_a_pin, ui_isr_handler, &rot_a_ISR_event);
@@ -370,6 +445,72 @@ static void init_rot(void)
     gpio_isr_handler_add(conf.rot_b_pin, ui_isr_handler, &rot_b_ISR_event);
     ESP_LOGI(TAG, "GPIO PIN %d ISR registered for rot b", conf.rot_b_pin);
 
+}
+
+//*****************************************************************************
+// UI Interaction Private functions
+//*****************************************************************************
+
+char* get_cmd_str(uint8_t n)
+{
+    if(n < num_cmds)
+    {
+        return &cmd_list[n*conf.lcd_num_col];
+    }
+
+    ESP_LOGE(TAG, "ERROR, tried to access cmd str that dont exist");
+    return NULL;
+}
+
+// based on the current cursor pos, display
+void update_display(void)
+{
+    if(in_menu)
+    {
+        LCD_home();
+        LCD_clearScreen();
+
+        // display cmds, all are gareneteed to fit on screen
+        uint8_t i = index_of_first_line;
+        uint8_t row = 0;
+        for(; i < index_of_first_line + conf.lcd_num_row; ++i)
+        {
+            LCD_setCursor(0, row);
+            if(i == cursor_pos_on_screen + index_of_first_line)
+            {
+                LCD_writeChar('>');
+            }
+            else
+            {
+                LCD_writeChar(' ');
+            }
+
+            LCD_setCursor(1, row);
+            if(i < num_cmds)
+            {
+                LCD_writeStr(get_cmd_str(i));
+            }
+
+            ++row;
+        }        
+    }
+    else
+    {
+
+    }
+}
+
+void dummy_add(uint8_t n)
+{
+    uint8_t i;
+    char c[2];
+    c[0] = 'a';
+    c[1] = (char) 0;
+    for(i = 0; i < n; ++i)
+    {
+        c[0] = (char)('a' + i);
+        add_ui_cmd(&c, NULL);
+    }
 }
 
 //*****************************************************************************
@@ -402,9 +543,53 @@ void init_user_interface(user_interface_conf_t* _conf)
     #if USE_LCD
         init_lcd();
     #endif
+
+    cmd_list = malloc(conf.max_num_cmds * conf.lcd_num_col);
+    current_log = malloc(conf.max_log_lines * conf.lcd_num_col);
+    call_back_list = malloc(conf.max_num_cmds * sizeof(cb_t));
+
+    assert(cmd_list);
+    assert(current_log);
+    assert(call_back_list);
+
+    memset(cmd_list, 0, conf.max_num_cmds * conf.lcd_num_col);
+    memset(current_log, 0, conf.max_log_lines * conf.lcd_num_col);
+
+    dummy_add(10);
+    update_display();
 }
 
 void register_user_interface(void)
 {
     register_no_arg_cmd("toggle_button", "Registers change of state on main input button", &do_toggle_button);
+}
+
+void add_ui_cmd(char* name, void (*func)(void))
+{
+    // Check len of name if its more than 19 char kick that shit back
+    if(strnlen(name, conf.lcd_num_col - 1) > conf.lcd_num_col - 1)
+    {
+        ESP_LOGE(TAG, "UI add of cmd %s failed, too long", name);
+        return;
+    }
+
+    // Check to see if we are registering too many cmds
+    if(num_cmds == conf.max_num_cmds)
+    {
+        ESP_LOGE(TAG, "UI add of cmd %s failed, too many cmds", name);
+        return;
+    }
+
+    strcpy(cmd_list + (num_cmds * conf.lcd_num_col), name);
+    call_back_list[num_cmds] = func;
+    num_cmds++;
+}
+
+// Call this once  all ui cmds have been added
+void start_ui(void)
+{
+    in_menu = 1;
+    cursor_pos_on_screen = 0;
+    index_of_first_line = 0;
+    update_display();
 }

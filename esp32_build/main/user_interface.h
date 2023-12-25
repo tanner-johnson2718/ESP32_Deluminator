@@ -19,7 +19,11 @@ struct user_interface
     uint32_t i2c_clk_speed;
     uint8_t rot_a_pin;
     uint8_t rot_b_pin;
+    uint8_t max_num_cmds;
+    uint16_t max_log_lines;
 } typedef user_interface_conf_t;
 
 void init_user_interface(user_interface_conf_t* conf);
 void register_user_interface(void);
+void start_ui(void);
+void add_ui_cmd(char* name, void (*func)(void));
