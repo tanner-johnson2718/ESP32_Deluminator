@@ -372,9 +372,6 @@ void LCD_init()
 static void init_lcd(void)
 {
     LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col);
-    LCD_home();
-    LCD_clearScreen();
-    LCD_writeStr("Hello World!!");
     ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_row, conf.lcd_num_col);
     ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_addr);
 }
@@ -465,11 +462,11 @@ char* get_cmd_str(uint8_t n)
 // based on the current cursor pos, display
 void update_display(void)
 {
+    LCD_home();
+    LCD_clearScreen();
+
     if(in_menu)
     {
-        LCD_home();
-        LCD_clearScreen();
-
         // display cmds, all are gareneteed to fit on screen
         uint8_t i = index_of_first_line;
         uint8_t row = 0;
@@ -556,7 +553,6 @@ void init_user_interface(user_interface_conf_t* _conf)
     memset(current_log, 0, conf.max_log_lines * conf.lcd_num_col);
 
     dummy_add(10);
-    update_display();
 }
 
 void register_user_interface(void)

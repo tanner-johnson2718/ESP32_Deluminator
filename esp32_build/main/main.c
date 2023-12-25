@@ -74,5 +74,8 @@ void app_main(void)
     register_flash();
     register_wifi();
 
+    // UI add cmds
+
+    start_ui();
     start_repl();  // no return
 }
