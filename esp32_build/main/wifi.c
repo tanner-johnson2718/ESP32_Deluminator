@@ -9,6 +9,9 @@
 #include "freertos/task.h"
 #include "repl.h"
 #include "wifi.h"
+#include "user_interface.h"
+
+static const char* TAG = "WIFI";
 
 // AP Poller Config
 #define SCAN_CONF_SHOW_HIDDEN 1
@@ -55,7 +58,12 @@ static void update_ap_info()
     esp_wifi_scan_start(&scan_conf, true);
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-    assert(ap_count <= conf.scan_list_size);
+    
+    if(ap_count >= conf.scan_list_size)
+    {
+        ap_count = conf.scan_list_size;
+    }
+
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
 }
 
@@ -188,6 +196,53 @@ static int do_scan_poll(int argc, char** argv)
 }
 
 //*****************************************************************************
+// UI SCAN CMD
+//*****************************************************************************
+
+void scan_on_press(uint8_t i)
+{
+    return;
+}
+
+void scan_ui_cmd(void)
+{
+    ESP_LOGI(TAG, "SCAN ALL UI CMD");
+    update_ap_info();
+
+    uint8_t i;
+    uint8_t line_counter = 0;
+    char line_buff[20] = {0};
+    for(i = 0; i < ap_count; ++i)
+    {
+        strncpy(line_buff, (char*) ap_info[i].ssid, 19);
+        push_to_line_buffer(line_counter, line_buff);
+        line_counter++;
+        ESP_LOGI(TAG, "%s", line_buff);
+
+        sprintf(line_buff, "%02x:%02x:%02x:%02x:%02x:%02x", ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
+        push_to_line_buffer(line_counter, line_buff);
+        line_counter++;
+        ESP_LOGI(TAG, "%s", line_buff);
+
+        sprintf(line_buff, "Channel=%02d", ap_info[i].primary);
+        push_to_line_buffer(line_counter, line_buff);
+        line_counter++;
+        ESP_LOGI(TAG, "%s", line_buff);
+
+        sprintf(line_buff, "RSSI=%02d", ap_info[i].rssi);
+        push_to_line_buffer(line_counter, line_buff);
+        line_counter++;
+        ESP_LOGI(TAG, "%s", line_buff);
+
+        line_buff[0] = (char) 0;
+        push_to_line_buffer(line_counter, line_buff);
+        line_counter++;
+        ESP_LOGI(TAG, "%s", line_buff);
+    }
+
+}
+
+//*****************************************************************************
 // PUBLIC
 //*****************************************************************************
 
@@ -203,4 +258,9 @@ void register_wifi(void)
     register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_dump_ap_info);
     register_no_arg_cmd("set_scan_target", "Set scope of scan: set_scan_target <all | ssid>", &do_set_scan_target);
     register_no_arg_cmd("scan_poll", "Poll ap scan: scan_poll <start | stop>", &do_scan_poll);
+}
+
+void ui_add_wifi(void)
+{
+    add_ui_cmd("scan all", scan_ui_cmd, scan_on_press);
 }

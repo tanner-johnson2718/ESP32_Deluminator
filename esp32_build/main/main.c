@@ -11,6 +11,7 @@
 #include "user_interface.h"
 #include "flash_man.h"
 #include "wifi.h"
+#include "esp_event.h"
 
 // FS defines
 #define MOUNT_PATH "/spiffs"
@@ -32,8 +33,8 @@
 #define LCD_COLS 20
 #define LCD_ROWS 4
 #define I2C_CLK_SPEED 10000
-#define MAX_NUM_UI_CMDS 128
-#define MAX_UI_LOG_LINES 1024
+#define MAX_NUM_UI_CMDS 32
+#define MAX_UI_LOG_LINES 128
 
 // Wifi defines
 #define AP_POLL_PRIO tskIDLE_PRIORITY
@@ -75,7 +76,47 @@ void app_main(void)
     register_wifi();
 
     // UI add cmds
+    ui_add_wifi();
+
 
     start_ui();
     start_repl();  // no return
 }
+
+
+// UI TEST
+//uint8_t __nums[MAX_UI_LOG_LINES] = {0}; 
+
+// void on_press_cb(uint8_t index)
+// {
+//     __nums[index] = (__nums[index] + 1) % 10;
+//     char s[2];
+//     s[1] = (char) 0;
+//     s[0] = '0' + (char)__nums[index];
+//     push_to_line_buffer(index, (char*) s);
+// }
+
+// void cmd_cb(void)
+// {
+//     uint8_t i;
+//     char s[2];
+//     s[1] = (char) 0;
+    
+//     for(i = 0; i < MAX_UI_LOG_LINES; ++i)
+//     {
+//         s[0] = '0' + (char)__nums[i];
+//         push_to_line_buffer(i, (char*) s);
+//     }
+// }
+
+// void ui_test(void)
+// {
+//     char s[2]; 
+//     s[1] = (char) 0;
+//     uint8_t i;
+//     for(i = 0; i < 10; ++i)
+//     {
+//         s[0] = 'a' + (char) i;
+//         add_ui_cmd((char*) s, cmd_cb, on_press_cb);
+//     }
+// }

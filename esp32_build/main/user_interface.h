@@ -1,8 +1,7 @@
 #pragma once
 
-#include "esp_event.h"
-
-ESP_EVENT_DECLARE_BASE(USER_INPUT_EVENT);
+typedef void (*command_cb_t)(void);
+typedef void (*on_press_cb_t)(uint8_t line_index);
 
 enum {                                       
     BUTTON_PUSHED
@@ -20,10 +19,12 @@ struct user_interface
     uint8_t rot_a_pin;
     uint8_t rot_b_pin;
     uint8_t max_num_cmds;
-    uint16_t max_log_lines;
+    uint8_t max_log_lines;
 } typedef user_interface_conf_t;
 
 void init_user_interface(user_interface_conf_t* conf);
 void register_user_interface(void);
 void start_ui(void);
-void add_ui_cmd(char* name, void (*func)(void));
+void add_ui_cmd(char* name, command_cb_t cmd_cb, on_press_cb_t on_press_cb);
+char* get_from_line_buffer(uint8_t line_num);
+void push_to_line_buffer(uint8_t line_num, char* line);

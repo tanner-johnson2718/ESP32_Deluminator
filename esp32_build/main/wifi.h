@@ -9,3 +9,4 @@ struct wifi_conf
 
 void init_wifi(wifi_conf_t* _conf);
 void register_wifi(void);
+void ui_add_wifi(void);

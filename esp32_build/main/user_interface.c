@@ -47,12 +47,13 @@ static void LCD_writeChar(char c);
 
 void update_display(void);
 
-typedef void (*cb_t)(void);
 static char* cmd_list;
-static cb_t* call_back_list;
+static command_cb_t* call_back_list;
+static on_press_cb_t* on_press_cb_list;
 static char* current_log;
 static uint8_t num_cmds = 0;
 static uint8_t in_menu = 1;
+static uint8_t in_log_cmd_index = 0;
 static uint8_t cursor_pos_on_screen = 0;
 static uint8_t index_of_first_line = 0; 
 
@@ -143,7 +144,7 @@ static void ui_event_handler(void* arg)
                     rot_first = 0;
                     rot_a_triggers_in_interval = 0;
                     rot_b_triggers_in_interval = 0;
-                    return;
+                    continue;
                 }
 
                 if(rot_first == rot_a_ISR_event)
@@ -184,16 +185,32 @@ static void ui_event_handler(void* arg)
 
 static void button_long_press(void)
 {
-    LCD_home();
-    LCD_clearScreen();
-    LCD_writeStr("LONG DADDY");
+    in_menu = 1;
+    cursor_pos_on_screen = 0;
+    index_of_first_line = 0;
+    in_log_cmd_index = 0;
+    update_display();
 }
 
 static void button_short_press(void)
 {
-    LCD_home();
-    LCD_clearScreen();
-    LCD_writeStr("SHORT BOI");
+    if(in_menu)
+    {
+        in_menu = 0;
+        cursor_pos_on_screen = 0;
+        index_of_first_line = 0;
+
+        in_log_cmd_index = index_of_first_line + cursor_pos_on_screen;
+        command_cb_t cb = call_back_list[in_log_cmd_index];
+        cb();
+    }
+    else
+    {
+        on_press_cb_t cb = on_press_cb_list[in_log_cmd_index];
+        cb(index_of_first_line + cursor_pos_on_screen);
+    }
+
+    update_display();
 }
 
 static void init_button(void)
@@ -371,7 +388,7 @@ void LCD_init()
 
 static void init_lcd(void)
 {
-    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col);
+    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col); 
     ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_row, conf.lcd_num_col);
     ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_addr);
 }
@@ -408,13 +425,23 @@ static void rot_left(void)
 
 static void rot_right(void)
 {
+    uint8_t max = 0;
+    if(in_menu)
+    {
+        max = num_cmds;
+    }
+    else
+    {
+        max = conf.max_log_lines;
+    }
+
     // right = down
-    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) == (num_cmds-1)) )
+    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) == (max-1)) )
     {
         return;
     }
 
-    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) < (num_cmds-1)))
+    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) < (max-1)))
     {
         ++index_of_first_line;
         update_display();
@@ -423,7 +450,7 @@ static void rot_right(void)
 
     if((cursor_pos_on_screen < (conf.lcd_num_row-1)))
     {
-        if(index_of_first_line + cursor_pos_on_screen == num_cmds - 1)
+        if(index_of_first_line + cursor_pos_on_screen == max - 1)
         {
             return;
         }
@@ -437,7 +464,7 @@ static void rot_right(void)
 static void init_rot(void)
 {
     gpio_isr_handler_add(conf.rot_a_pin, ui_isr_handler, &rot_a_ISR_event);
-    ESP_LOGI(TAG, "GPIO PIN %d ISR registered for rot a", conf.rot_b_pin);
+    ESP_LOGI(TAG, "GPIO PIN %d ISR registered for rot a", conf.rot_a_pin);
 
     gpio_isr_handler_add(conf.rot_b_pin, ui_isr_handler, &rot_b_ISR_event);
     ESP_LOGI(TAG, "GPIO PIN %d ISR registered for rot b", conf.rot_b_pin);
@@ -465,49 +492,39 @@ void update_display(void)
     LCD_home();
     LCD_clearScreen();
 
-    if(in_menu)
+    // display cmds, all are gareneteed to fit on screen
+    uint8_t i = index_of_first_line;
+    uint8_t row = 0;
+    char* line;
+    for(; i < index_of_first_line + conf.lcd_num_row; ++i)
     {
-        // display cmds, all are gareneteed to fit on screen
-        uint8_t i = index_of_first_line;
-        uint8_t row = 0;
-        for(; i < index_of_first_line + conf.lcd_num_row; ++i)
+        LCD_setCursor(0, row);
+        if(i == cursor_pos_on_screen + index_of_first_line)
         {
-            LCD_setCursor(0, row);
-            if(i == cursor_pos_on_screen + index_of_first_line)
+            LCD_writeChar('>');
+        }
+        else
+        {
+            LCD_writeChar(' ');
+        }
+
+        LCD_setCursor(1, row);
+        if(i < num_cmds)
+        {
+            if(in_menu)
             {
-                LCD_writeChar('>');
+                line = get_cmd_str(i);
             }
             else
             {
-                LCD_writeChar(' ');
+                line = get_from_line_buffer(i);
             }
 
-            LCD_setCursor(1, row);
-            if(i < num_cmds)
-            {
-                LCD_writeStr(get_cmd_str(i));
-            }
+            LCD_writeStr(line);
+        }
 
-            ++row;
-        }        
-    }
-    else
-    {
-
-    }
-}
-
-void dummy_add(uint8_t n)
-{
-    uint8_t i;
-    char c[2];
-    c[0] = 'a';
-    c[1] = (char) 0;
-    for(i = 0; i < n; ++i)
-    {
-        c[0] = (char)('a' + i);
-        add_ui_cmd(&c, NULL);
-    }
+        ++row;
+    }        
 }
 
 //*****************************************************************************
@@ -543,16 +560,16 @@ void init_user_interface(user_interface_conf_t* _conf)
 
     cmd_list = malloc(conf.max_num_cmds * conf.lcd_num_col);
     current_log = malloc(conf.max_log_lines * conf.lcd_num_col);
-    call_back_list = malloc(conf.max_num_cmds * sizeof(cb_t));
+    call_back_list = malloc(conf.max_num_cmds * sizeof(command_cb_t));
+    on_press_cb_list = malloc(conf.max_num_cmds * sizeof(on_press_cb_t));
 
     assert(cmd_list);
     assert(current_log);
     assert(call_back_list);
+    assert(on_press_cb_list);
 
     memset(cmd_list, 0, conf.max_num_cmds * conf.lcd_num_col);
     memset(current_log, 0, conf.max_log_lines * conf.lcd_num_col);
-
-    dummy_add(10);
 }
 
 void register_user_interface(void)
@@ -560,7 +577,7 @@ void register_user_interface(void)
     register_no_arg_cmd("toggle_button", "Registers change of state on main input button", &do_toggle_button);
 }
 
-void add_ui_cmd(char* name, void (*func)(void))
+void add_ui_cmd(char* name, command_cb_t cmd_cb, on_press_cb_t on_press_cb)
 {
     // Check len of name if its more than 19 char kick that shit back
     if(strnlen(name, conf.lcd_num_col - 1) > conf.lcd_num_col - 1)
@@ -577,7 +594,8 @@ void add_ui_cmd(char* name, void (*func)(void))
     }
 
     strcpy(cmd_list + (num_cmds * conf.lcd_num_col), name);
-    call_back_list[num_cmds] = func;
+    call_back_list[num_cmds] = cmd_cb;
+    on_press_cb_list[num_cmds] = on_press_cb;
     num_cmds++;
 }
 
@@ -585,7 +603,35 @@ void add_ui_cmd(char* name, void (*func)(void))
 void start_ui(void)
 {
     in_menu = 1;
+    in_log_cmd_index = 0;
     cursor_pos_on_screen = 0;
     index_of_first_line = 0;
     update_display();
+}
+
+void push_to_line_buffer(uint8_t line_num, char* line)
+{
+    if(line_num >= conf.max_log_lines)
+    {
+        ESP_LOGE(TAG, "Tried to put line outside of line buffer range");
+        return;
+    }
+
+    if(strnlen(line, conf.lcd_num_col - 1) > conf.lcd_num_col - 1)
+    {
+        ESP_LOGE(TAG, "Log line %s too long", line);
+        return;
+    }
+
+    strcpy(current_log + (line_num*conf.lcd_num_col), line);
+}
+
+char* get_from_line_buffer(uint8_t line_num)
+{
+    if(line_num >= conf.max_log_lines)
+    {
+        ESP_LOGE(TAG, "Tried to get line outside of line buffer range");
+        return NULL;
+    }
+    return current_log + (line_num*conf.lcd_num_col);
 }
