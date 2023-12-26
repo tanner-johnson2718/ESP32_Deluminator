@@ -25,6 +25,8 @@ struct user_interface
 void init_user_interface(user_interface_conf_t* conf);
 void register_user_interface(void);
 void start_ui(void);
-void add_ui_cmd(char* name, command_cb_t cmd_cb, on_press_cb_t on_press_cb);
+void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini);
 char* get_from_line_buffer(uint8_t line_num);
 void push_to_line_buffer(uint8_t line_num, char* line);
+void update_display(void);
+void home_screen_pos(void);

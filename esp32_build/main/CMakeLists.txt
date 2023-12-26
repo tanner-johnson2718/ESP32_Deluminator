@@ -4,4 +4,5 @@ idf_component_register(SRCS   "main.c"
                               "flash_man.c"
                               "wifi.c"
                               "lcd.c"
+                              "encoder.c"
                     INCLUDE_DIRS ".")

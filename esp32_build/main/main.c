@@ -1,11 +1,11 @@
 // Entry Point for the ESP32 Delum. Some Notes on design:
 //
 // * Should stick to an async / event oriented design
-// * PINs, Max file size, etc should be preprocessor macros here
+// * PINs, Max file size, and config should be preprocessor macros here
 // * Every Module provides an init function that takes a module_conf_t type to pass defines
 // * These conf structs get copied into the static global space of that module
 // * Modules that wish to register repl commands export a register_module() func
-// * This file should just serve as a configure and register of services
+//    * repl.h provides an api for doing so
 
 #include "repl.h"
 #include "user_interface.h"
@@ -82,41 +82,3 @@ void app_main(void)
     start_ui();
     start_repl();  // no return
 }
-
-
-// UI TEST
-//uint8_t __nums[MAX_UI_LOG_LINES] = {0}; 
-
-// void on_press_cb(uint8_t index)
-// {
-//     __nums[index] = (__nums[index] + 1) % 10;
-//     char s[2];
-//     s[1] = (char) 0;
-//     s[0] = '0' + (char)__nums[index];
-//     push_to_line_buffer(index, (char*) s);
-// }
-
-// void cmd_cb(void)
-// {
-//     uint8_t i;
-//     char s[2];
-//     s[1] = (char) 0;
-    
-//     for(i = 0; i < MAX_UI_LOG_LINES; ++i)
-//     {
-//         s[0] = '0' + (char)__nums[i];
-//         push_to_line_buffer(i, (char*) s);
-//     }
-// }
-
-// void ui_test(void)
-// {
-//     char s[2]; 
-//     s[1] = (char) 0;
-//     uint8_t i;
-//     for(i = 0; i < 10; ++i)
-//     {
-//         s[0] = 'a' + (char) i;
-//         add_ui_cmd((char*) s, cmd_cb, on_press_cb);
-//     }
-// }

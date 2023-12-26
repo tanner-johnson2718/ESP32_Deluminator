@@ -6,9 +6,27 @@
 * And in particular will serve as the high level design doc for the coding and systems aspect of the ESP 32 Deluminator
 * The build and src location is here [esp32_build](../esp32_build/)
 
+
+**TABLE OF CONTENTS**
+[Serial Based REPL](./esp32_sys_overview.md#repl)
+[Flash Memory](./esp32_sys_overview.md#flash-memory)
+[User Iterface]()
+[System Start Up]
+
+# REPL
+
+* [Implementation](./esp32_build/main/repl.c)
+* [Header File with some extra details](./esp32_build/main/repl.h)
+* We used the code from the console example provided by esp-idf
+* The header file shows one how to use it but its pretty straight forward
+* With this module we get a interactive console to run any commands we register
+* Also, this gives us a debug log
+* Use `ESP32_LOGI` and `ESP32_LOGE` to log events over the console
+
 # Flash Memory
 
-* [module code](./esp32_build/main/flash_man.c)
+* [Implementation](./esp32_build/main/flash_man.c)
+* [Header File with some Extra Info](./esp32_build/main/flash_man.h)
 
 ## Layout
 
@@ -72,7 +90,7 @@ fclose(f);
 
 * [module code](./esp32_build/main/user_interface.c)
 
-# I2C Library for LCD 2004 w/ PCF8547T IO Expander
+## I2C Library for LCD 2004 w/ PCF8547T IO Expander
 
 * https://github.com/maxsydney/ESP32-HD44780
 * Take c and header file from this and add the c file to the CMakeLists.txt SRC list
@@ -86,7 +104,7 @@ fclose(f);
 | 3.3V | Vin | Vin |
 | GND | GND | GND
 
-# Event Loop API
+## Event Loop API
 
 The event loop API is a built in message passing async system built into the esp 32 dev env. There are two main subsytems:
 
@@ -126,8 +144,9 @@ esp_event_dump(FILE *file);
 * Note Event loop appears to only dispatch one thread to process events
 * Meaning an event handler need not handle reentrant cases cause it will never reenter 
 
-# Push button with Debouncing
+## Push button with Debouncing
 
+* Here is a basic walk through for setting up a event based push button debouncer
 * Connct D13 to grount through button with 20kohm resitor
     * [D13] <---> Res <---> Switch <---> GND
 * Configure the pin
@@ -173,16 +192,7 @@ gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 ```
 
-# Wifi
-
-* wifi scanning?
-* how come we need todo a netif_init to use wifi? Or do we?
-* wifi api link
-* netif api link
-
-# Generic ESP32 Systems Notes
-
-## Early Start Up
+# System Boot Up
 
 * Bootstage 1
     * Reset vector code located in ROM and is unchangable
@@ -252,3 +262,10 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
 
 * [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
 * [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
+
+# Wifi
+
+* wifi scanning?
+* how come we need todo a netif_init to use wifi? Or do we?
+* wifi api link
+* netif api link
