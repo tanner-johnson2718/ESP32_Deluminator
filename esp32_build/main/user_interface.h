@@ -46,3 +46,11 @@ void update_display(void);
 
 // Just zeros out the cursor pos and index within the line buffer
 void home_screen_pos(void);
+
+// Use this to update just one line on the screen. The passed index is the
+// index in line buff. Must be on screen or will not do anything. Must also
+// be called from not in_menu context
+void update_line(uint8_t i);
+
+void lock_cursor(void);
+void unlock_cursor(void);

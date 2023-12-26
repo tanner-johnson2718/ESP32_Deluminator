@@ -28,7 +28,8 @@ static uint8_t num_cmds = 0;
 static uint8_t in_menu = 1;
 static uint8_t in_log_cmd_index = 0;
 static uint8_t cursor_pos_on_screen = 0;
-static uint8_t index_of_first_line = 0; 
+static uint8_t index_of_first_line = 0;
+static uint8_t cursor_locked = 0;
 
 static void button_short_press(void);
 static void button_long_press(void);
@@ -121,6 +122,7 @@ static void button_long_press(void)
     cursor_pos_on_screen = 0;
     index_of_first_line = 0;
     in_log_cmd_index = 0;
+    cursor_locked = 0;
     update_display();
 }
 
@@ -131,6 +133,10 @@ static void button_long_press(void)
 // Scroll up
 static void rot_left(void)
 {
+    if(cursor_locked)
+    {
+        return;
+    }
     // left = up
     if(cursor_pos_on_screen == 0 && index_of_first_line == 0)
     {
@@ -157,6 +163,11 @@ static void rot_left(void)
 // not in menu use the line buffer provided that the command is pushing to.
 static void rot_right(void)
 {
+    if(cursor_locked)
+    {
+        return;
+    }
+
     uint8_t max = 0;
     if(in_menu){ max = num_cmds; }
     else       { max = conf.max_log_lines; }
@@ -205,25 +216,25 @@ static char* get_cmd_str(uint8_t n)
 static int do_rot_l(int argc, char** argv)
 {
     rot_left();
-    return 0
+    return 0;
 }
 
 static int do_rot_r(int argc, char** argv)
 {
     rot_right();
-    return 0
+    return 0;
 }
 
 static int do_press(int argc, char** argv)
 {
-    short_press();
-    return 0
+    button_short_press();
+    return 0;
 }
 
 static int do_long_press(int argc, char** argv)
 {
-    long_press();
-    return 0
+    button_long_press();
+    return 0;
 }
 
 //*****************************************************************************
@@ -337,6 +348,30 @@ void home_screen_pos(void)
     index_of_first_line = 0;
 }
 
+static void _update_line(uint8_t row, uint8_t i, uint8_t max)
+{
+    char* line;
+
+    LCD_setCursor(0, row);
+    if(i == cursor_pos_on_screen + index_of_first_line)
+    {
+        LCD_writeChar('>');
+    }
+    else
+    {
+        LCD_writeChar(' ');
+    }
+
+    LCD_setCursor(1, row);
+    if(i < max)
+    {
+        if(in_menu) { line = get_cmd_str(i); }
+        else        { line = get_from_line_buffer(i); }
+
+        LCD_writeStr(line);
+    }
+}
+
 // based on the current cursor pos and index in either the menu or line buff,
 // dump contents of the buffer to the screen
 void update_display(void)
@@ -351,28 +386,43 @@ void update_display(void)
     // display cmds, all are gareneteed to fit on screen
     uint8_t i = index_of_first_line;
     uint8_t row = 0;
-    char* line;
+    
     for(; i < index_of_first_line + conf.lcd_num_row; ++i)
     {
-        LCD_setCursor(0, row);
-        if(i == cursor_pos_on_screen + index_of_first_line)
-        {
-            LCD_writeChar('>');
-        }
-        else
-        {
-            LCD_writeChar(' ');
-        }
-
-        LCD_setCursor(1, row);
-        if(i < max)
-        {
-            if(in_menu) { line = get_cmd_str(i); }
-            else        { line = get_from_line_buffer(i); }
-
-            LCD_writeStr(line);
-        }
-
+        _update_line(row, i, max);
         ++row;
     }        
+}
+
+void update_line(uint8_t i)
+{
+    if(in_menu)
+    {
+        ESP_LOGE(TAG, "Called update_line from menu context");
+        return;
+    }
+
+    if(i >= conf.max_log_lines)
+    {
+        ESP_LOGE(TAG, "Called update line with out of bounds index");
+        return;
+    }
+
+    if(i < index_of_first_line || i >= index_of_first_line + 4)
+    {
+        ESP_LOGE(TAG, "Called update line on line not on screen");
+        return;
+    }
+
+    _update_line(i - index_of_first_line, i, conf.max_log_lines);
+}
+
+void lock_cursor(void)
+{
+    cursor_locked = 1;
+}
+
+void unlock_cursor(void)
+{
+    cursor_locked = 0;
 }

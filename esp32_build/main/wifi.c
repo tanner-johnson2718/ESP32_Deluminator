@@ -299,7 +299,7 @@ void scan_rssi_task()
         snprintf(line_buff,19, "RSSI=%03d", ap_info[0].rssi);
         push_to_line_buffer(3, line_buff);
         home_screen_pos();
-        update_display();
+        update_line(3);
 
         if(scan_rssi_running == 0) { break; }
         vTaskDelay(conf.ap_poll_delay_ms / portTICK_PERIOD_MS);
@@ -337,6 +337,9 @@ void scan_rssi_on_press_cb(uint8_t index)
 
         uint8_t line_counter = 0;
         lcd_dump_ap(index, &line_counter);
+        home_screen_pos();
+        lock_cursor();
+        update_display();
 
         ESP_LOGI(TAG, "STARTING SCAN RSSI TASK");
         assert(xSemaphoreGive(xSemaphore) == pdTRUE);
@@ -349,6 +352,7 @@ void scan_rssi_on_press_cb(uint8_t index)
         kill_scan_rssi_task();
 
         home_screen_pos();
+        unlock_cursor();
         push_to_line_buffer(0, "Scanning ...");
         push_to_line_buffer(1, "");
         push_to_line_buffer(2, "");

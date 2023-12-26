@@ -46,42 +46,19 @@
 
 static const char* TAG = "LCD";
 static user_interface_conf_t conf;
+static SemaphoreHandle_t lock = NULL;
 
-void LCD_setCursor(uint8_t col, uint8_t row)
-{
-    if (row > conf.lcd_num_row - 1) {
-        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, conf.lcd_num_row-1);
-        row = conf.lcd_num_row - 1;
-    }
-    uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
-    LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND);
-}
+static void LCD_pulseEnable(uint8_t data);
+static void LCD_writeByte(uint8_t data, uint8_t mode);
+static void LCD_writeNibble(uint8_t nibble, uint8_t mode);
 
-void LCD_writeChar(char c)
-{
-    LCD_writeByte(c, LCD_WRITE);                                        // Write data to DDRAM
-}
+//*****************************************************************************
+// Private
+//*****************************************************************************
 
-void LCD_writeStr(char* str)
-{
-    while (*str) {
-        LCD_writeChar(*str++);
-    }
-}
 
-void LCD_home(void)
-{
-    LCD_writeByte(LCD_HOME, LCD_COMMAND);
-    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
-}
 
-void LCD_clearScreen(void)
-{
-    LCD_writeByte(LCD_CLEAR, LCD_COMMAND);
-    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
-}
-
-void LCD_writeNibble(uint8_t nibble, uint8_t mode)
+static void LCD_writeNibble(uint8_t nibble, uint8_t mode)
 {
     uint8_t data = (nibble & 0xF0) | mode | LCD_BACKLIGHT;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -95,13 +72,13 @@ void LCD_writeNibble(uint8_t nibble, uint8_t mode)
     LCD_pulseEnable(data);                                              // Clock data into LCD
 }
 
-void LCD_writeByte(uint8_t data, uint8_t mode)
+static void LCD_writeByte(uint8_t data, uint8_t mode)
 {
     LCD_writeNibble(data & 0xF0, mode);
     LCD_writeNibble((data << 4) & 0xF0, mode);
 }
 
-void LCD_pulseEnable(uint8_t data)
+static void LCD_pulseEnable(uint8_t data)
 {
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     ESP_ERROR_CHECK(i2c_master_start(cmd));
@@ -138,7 +115,7 @@ static esp_err_t I2C_init(void)
     return ESP_OK;
 }
 
-void LCD_init()
+static void LCD_init()
 {
     I2C_init();
     vTaskDelay(100 / portTICK_PERIOD_MS);                                 // Initial 40 mSec delay
@@ -168,10 +145,63 @@ void LCD_init()
     LCD_writeByte(LCD_DISPLAY_ON, LCD_COMMAND);                         // Ensure LCD is set to on
 }
 
+//*****************************************************************************
+// Public
+//****************************************************************************
+
+void LCD_setCursor(uint8_t col, uint8_t row)
+{
+    assert(xSemaphoreTake(lock, portMAX_DELAY));
+    if (row > conf.lcd_num_row - 1) {
+        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, conf.lcd_num_row-1);
+        row = conf.lcd_num_row - 1;
+    }
+    uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
+    LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND);
+    assert(xSemaphoreGive(lock));
+}
+
+void LCD_writeChar(char c)
+{
+    assert(xSemaphoreTake(lock, portMAX_DELAY));
+    LCD_writeByte(c, LCD_WRITE);                                        // Write data to DDRAM
+    assert(xSemaphoreGive(lock));
+}
+
+void LCD_writeStr(char* str)
+{
+    assert(xSemaphoreTake(lock, portMAX_DELAY));
+    while (*str) {
+        char c = *str;
+        LCD_writeByte(c, LCD_WRITE);
+        str++;
+    }
+    assert(xSemaphoreGive(lock));
+}
+
+void LCD_home(void)
+{
+    assert(xSemaphoreTake(lock, portMAX_DELAY));
+    LCD_writeByte(LCD_HOME, LCD_COMMAND);
+    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+    assert(xSemaphoreGive(lock));
+}
+
+void LCD_clearScreen(void)
+{
+    assert(xSemaphoreTake(lock, portMAX_DELAY));
+    LCD_writeByte(LCD_CLEAR, LCD_COMMAND);
+    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+    assert(xSemaphoreGive(lock));
+}
+
 void init_lcd(user_interface_conf_t* _conf)
 {
     memcpy(&conf, _conf, sizeof(user_interface_conf_t));
-    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col); 
+    lock = xSemaphoreCreateBinary();
+    assert(lock);
+    assert(xSemaphoreGive(lock));
+    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col);
     ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_row, conf.lcd_num_col);
     ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_addr);
 }
