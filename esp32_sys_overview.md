@@ -7,13 +7,14 @@
 * The build and src location is here [esp32_build](../esp32_build/)
 
 
-**TABLE OF CONTENTS**
-[Serial Based REPL](./esp32_sys_overview.md#repl)
-[Flash Memory](./esp32_sys_overview.md#flash-memory)
-[User Iterface](./esp32_sys_overview.md#user-interface)
-[System Start Up](./esp32_sys_overview.md#system-boot-up)
-[Tasks]()
-[Wifi]()
+| **TABLE OF CONTENTS** |
+| --- |
+| [Serial Based REPL](./esp32_sys_overview.md#repl) |
+| [Flash Memory](./esp32_sys_overview.md#flash-memory) |
+| [User Iterface](./esp32_sys_overview.md#user-interface) |
+| [System Start Up](./esp32_sys_overview.md#system-boot-up) |
+| [Tasks]() |
+| [Wifi]() |
 
 # REPL
 
