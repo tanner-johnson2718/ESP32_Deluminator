@@ -10,8 +10,10 @@
 **TABLE OF CONTENTS**
 [Serial Based REPL](./esp32_sys_overview.md#repl)
 [Flash Memory](./esp32_sys_overview.md#flash-memory)
-[User Iterface]()
-[System Start Up]
+[User Iterface](./esp32_sys_overview.md#user-interface)
+[System Start Up](./esp32_sys_overview.md#system-boot-up)
+[Tasks]()
+[Wifi]()
 
 # REPL
 
@@ -26,7 +28,22 @@
 # Flash Memory
 
 * [Implementation](./esp32_build/main/flash_man.c)
-* [Header File with some Extra Info](./esp32_build/main/flash_man.h)
+* [Header File](./esp32_build/main/flash_man.h)
+* For now all our flash memory module does is init two subsyetems that may be used through other API
+* (1) NVS - Stores key pairs on NVS partion.
+    * Used by wifi module to store PHY params
+    * The api is the builtin esp32 nvs api
+* (2) SPIFFS - Stores files in a flat dir struct
+    * Used to to store console command history
+    * Will be used by wifi module to store packet dumps
+    * Provides a POSIX file interface i.e. open, read, etc.
+
+## Files
+
+| File name | Desc |
+| --- | --- |
+| `history.txt` | List of command history entered into the REPL |
+| `event.txt` | Debug info for default event loop. Must run user defined cmd `dump_event_log` to update |
 
 ## Layout
 
@@ -88,21 +105,28 @@ fclose(f);
 
 # User Interface
 
-* [module code](./esp32_build/main/user_interface.c)
+* [Implementation](./esp32_build/main/user_interface.c)
+* [Header with an high level explanation](./esp32_build/main/user_interface.h)
+
+| ESP Pin | LCD / ROT Pin | Func |
+| --- | --- | --- |
+| 26 | SCL | SCL |
+| 25 | SDA | SDA |
+| Vin | LCD+ | Vin |
+| GND | LCD- | GND |
+| 33 | Rot Switch | Button Pin |
+| GND | Rot Switch | Button Pin GND |
+| 32 | Rot A Term | - |
+| 27 | Rot B Term | - |
+| GND | Rot Middle term | - |
 
 ## I2C Library for LCD 2004 w/ PCF8547T IO Expander
 
 * https://github.com/maxsydney/ESP32-HD44780
 * Take c and header file from this and add the c file to the CMakeLists.txt SRC list
-* set master clock to 10000
+* set master clock to 500000
 * Use the following Pinout
-
-| ESP Pin | LCD Pin | Func |
-| --- | --- | --- |
-| 18 | SCL | SCL |
-| 19 | SDA | SDA |
-| 3.3V | Vin | Vin |
-| GND | GND | GND
+* LCD ADDR of 0x27
 
 ## Event Loop API
 
@@ -258,7 +282,13 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
 
-## Tasks / FreeRTOS
+# Tasks / FreeRTOS
+
+* Create
+* Delete
+* Delay
+* Semaphore
+* Tasks list on our system
 
 * [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
 * [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)

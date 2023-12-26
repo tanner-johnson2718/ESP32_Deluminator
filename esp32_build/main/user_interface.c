@@ -35,6 +35,9 @@ static void button_long_press(void);
 static void rot_left(void);
 static void rot_right(void);
 
+// Main UI Event Loop. Waits for the timer going off in the rotary code to 
+// poll and post events to the ui event Q. Based on the event we get notified 
+// of, call the appropriate call back i.e. short_press(), long_press, etc
 static void ui_event_handler(void* arg)
 {
     rotary_encoder_event_t e;
@@ -80,21 +83,8 @@ static void ui_event_handler(void* arg)
 // BUTTON PRVATE
 //*****************************************************************************
 
-static void button_long_press(void)
-{
-    if(!in_menu)
-    {
-        command_cb_t cb = fini_cb_list[in_log_cmd_index];
-        cb();
-    }
-
-    in_menu = 1;
-    cursor_pos_on_screen = 0;
-    index_of_first_line = 0;
-    in_log_cmd_index = 0;
-    update_display();
-}
-
+// On short press, if are at the main menu, reset our position on the screen
+// and in the buffer and call the clicked commands init func
 static void button_short_press(void)
 {
     if(in_menu)
@@ -117,10 +107,28 @@ static void button_short_press(void)
     update_display();
 }
 
+// On a long press we exit back out into the menu screen. Call the commands 
+// fini and reset our pos on the screen.
+static void button_long_press(void)
+{
+    if(!in_menu)
+    {
+        command_cb_t cb = fini_cb_list[in_log_cmd_index];
+        cb();
+    }
+
+    in_menu = 1;
+    cursor_pos_on_screen = 0;
+    index_of_first_line = 0;
+    in_log_cmd_index = 0;
+    update_display();
+}
+
 //*****************************************************************************
 // ROT PRIVATE
 //*****************************************************************************
 
+// Scroll up
 static void rot_left(void)
 {
     // left = up
@@ -145,6 +153,8 @@ static void rot_left(void)
     }
 }
 
+// Scroll down. When in menu use the list of commands to scroll through. When
+// not in menu use the line buffer provided that the command is pushing to.
 static void rot_right(void)
 {
     uint8_t max = 0;
@@ -181,7 +191,7 @@ static void rot_right(void)
 // UI Interaction Private functions
 //*****************************************************************************
 
-char* get_cmd_str(uint8_t n)
+static char* get_cmd_str(uint8_t n)
 {
     if(n < num_cmds)
     {
@@ -192,43 +202,28 @@ char* get_cmd_str(uint8_t n)
     return NULL;
 }
 
-// based on the current cursor pos, display
-void update_display(void)
+static int do_rot_l(int argc, char** argv)
 {
-    LCD_home();
-    LCD_clearScreen();
+    rot_left();
+    return 0
+}
 
-    uint8_t max = 0;
-    if(in_menu){ max = num_cmds; }
-    else { max = conf.max_log_lines; }
+static int do_rot_r(int argc, char** argv)
+{
+    rot_right();
+    return 0
+}
 
-    // display cmds, all are gareneteed to fit on screen
-    uint8_t i = index_of_first_line;
-    uint8_t row = 0;
-    char* line;
-    for(; i < index_of_first_line + conf.lcd_num_row; ++i)
-    {
-        LCD_setCursor(0, row);
-        if(i == cursor_pos_on_screen + index_of_first_line)
-        {
-            LCD_writeChar('>');
-        }
-        else
-        {
-            LCD_writeChar(' ');
-        }
+static int do_press(int argc, char** argv)
+{
+    short_press();
+    return 0
+}
 
-        LCD_setCursor(1, row);
-        if(i < max)
-        {
-            if(in_menu) { line = get_cmd_str(i); }
-            else        { line = get_from_line_buffer(i); }
-
-            LCD_writeStr(line);
-        }
-
-        ++row;
-    }        
+static int do_long_press(int argc, char** argv)
+{
+    long_press();
+    return 0
 }
 
 //*****************************************************************************
@@ -268,7 +263,13 @@ void init_user_interface(user_interface_conf_t* _conf)
     memset(current_log, 0, conf.max_log_lines * conf.lcd_num_col);
 }
 
-void register_user_interface(void){}
+void register_user_interface(void)
+{
+    register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
+    register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
+    register_no_arg_cmd("press", "Simulate short press", &do_press);
+    register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
+}
 
 void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini)
 {
@@ -334,4 +335,44 @@ void home_screen_pos(void)
 {
     cursor_pos_on_screen = 0;
     index_of_first_line = 0;
+}
+
+// based on the current cursor pos and index in either the menu or line buff,
+// dump contents of the buffer to the screen
+void update_display(void)
+{
+    LCD_home();
+    LCD_clearScreen();
+
+    uint8_t max = 0;
+    if(in_menu){ max = num_cmds; }
+    else { max = conf.max_log_lines; }
+
+    // display cmds, all are gareneteed to fit on screen
+    uint8_t i = index_of_first_line;
+    uint8_t row = 0;
+    char* line;
+    for(; i < index_of_first_line + conf.lcd_num_row; ++i)
+    {
+        LCD_setCursor(0, row);
+        if(i == cursor_pos_on_screen + index_of_first_line)
+        {
+            LCD_writeChar('>');
+        }
+        else
+        {
+            LCD_writeChar(' ');
+        }
+
+        LCD_setCursor(1, row);
+        if(i < max)
+        {
+            if(in_menu) { line = get_cmd_str(i); }
+            else        { line = get_from_line_buffer(i); }
+
+            LCD_writeStr(line);
+        }
+
+        ++row;
+    }        
 }
