@@ -13,8 +13,9 @@
 | [Flash Memory](./esp32_sys_overview.md#flash-memory) |
 | [User Iterface](./esp32_sys_overview.md#user-interface) |
 | [System Start Up](./esp32_sys_overview.md#system-boot-up) |
-| [Tasks]() |
 | [Wifi]() |
+| [Tasks]() |
+
 
 # REPL
 
@@ -283,6 +284,13 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
 
 [Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
 
+# Wifi
+
+* wifi scanning?
+* how come we need todo a netif_init to use wifi? Or do we?
+* wifi api link
+* netif api link
+
 # Tasks / FreeRTOS
 
 * Create
@@ -293,10 +301,3 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
 
 * [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
 * [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
-
-# Wifi
-
-* wifi scanning?
-* how come we need todo a netif_init to use wifi? Or do we?
-* wifi api link
-* netif api link

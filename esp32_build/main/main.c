@@ -39,7 +39,8 @@
 // Wifi defines
 #define AP_POLL_PRIO tskIDLE_PRIORITY
 #define AP_POLL_DELAY_MS 500
-#define DEFAULT_SCAN_LIST_SIZE 16
+#define DEFAULT_SCAN_LIST_SIZE 32
+#define CREATE_AP_IF 0
 
 void app_main(void)
 {
@@ -61,7 +62,7 @@ void app_main(void)
 
     flash_conf_t flash_conf = {MOUNT_PATH, MAX_FILES};
 
-    wifi_conf_t wifi_conf = {AP_POLL_PRIO, AP_POLL_DELAY_MS, DEFAULT_SCAN_LIST_SIZE};
+    wifi_conf_t wifi_conf = {AP_POLL_PRIO, AP_POLL_DELAY_MS, DEFAULT_SCAN_LIST_SIZE, CREATE_AP_IF};
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     init_flash(&flash_conf);
