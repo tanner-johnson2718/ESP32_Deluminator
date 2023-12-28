@@ -37,6 +37,7 @@ static esp_netif_t *ap_netif = NULL;
 // log every STA MAC that is associated with that AP
 #define MAC_LEN 6
 static uint8_t* active_mac_list = NULL;
+static int8_t* active_mac_list_rssi = NULL;
 static uint8_t active_mac_list_len = 0;
 static uint8_t target_ap = 0;
 static uint8_t sta_scanner_running = 0;
@@ -160,7 +161,7 @@ static uint8_t* get_nth_mac(uint8_t n)
 }
 
 
-static void insert_mac(uint8_t* m1)
+static void insert_mac(uint8_t* m1, int8_t rssi)
 {
     if(active_mac_list_len == conf.scan_list_size)
     {
@@ -179,6 +180,7 @@ static void insert_mac(uint8_t* m1)
     {
         if(mac_is_eq(m1, get_nth_mac(i)))
         {
+            active_mac_list_rssi[i] = rssi;
             assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
             return;
         }
@@ -189,15 +191,24 @@ static void insert_mac(uint8_t* m1)
         get_nth_mac(active_mac_list_len)[i] = m1[i];
     }
 
+    active_mac_list_rssi[active_mac_list_len] = rssi;
     
     ++active_mac_list_len;
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 
 }
 
-static void clear_active_mac_list()
+static void clear_active_mac_list(void)
 {
+    if(!xSemaphoreTake(active_mac_list_lock, 0))
+    {
+        ESP_LOGI(TAG, "clear mac list failed ..  busy");
+        return;
+    }
+
+    active_mac_list_len = 0;
     memset(active_mac_list, 0, conf.scan_list_size*MAC_LEN);
+    assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 }
 
 static void set_sta_scan_target(uint8_t ap_index)
@@ -211,6 +222,65 @@ static void set_sta_scan_target(uint8_t ap_index)
     ESP_LOGI(TAG, "STA Scan target set to %s", ap_info[ap_index].ssid);
     target_ap = ap_index;
 
+}
+
+static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
+{
+    switch(type)
+    {
+        case WIFI_PKT_MGMT:
+            // printf("TYPE = MGMT\n");
+            break;
+        case WIFI_PKT_CTRL:
+            // printf("TYPE = CTRL\n");
+            break;
+        case WIFI_PKT_MISC:
+            // printf("TYPE = MISC\n");
+            break;
+        case WIFI_PKT_DATA:
+            // printf("TYPE = DATA\n");
+            break;
+        default:
+            ESP_LOGE(TAG,  "In sniffer, shouldnt be here!");
+            return; 
+    }
+
+    wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
+
+    // uint8_t* m1 = p->payload + 4;
+    uint8_t* m2 = p->payload + 10;
+    uint8_t* m3 = p->payload + 16;
+
+    if(mac_is_eq(m3, ap_info[target_ap].bssid))
+    {
+        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 1, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5]);
+        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 2, m2[0], m2[1], m2[2], m2[3], m2[4], m2[5]);
+        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 3, m3[0], m3[1], m3[2], m3[3], m3[4], m3[5]);
+        // printf("Len = %d\n\n", p->rx_ctrl.sig_len);
+    
+        insert_mac(m2, p->rx_ctrl.rssi);
+    }
+
+}
+
+static void launch_mac_sniffer()
+{
+    ESP_ERROR_CHECK(esp_wifi_set_promiscuous(1));
+
+    wifi_promiscuous_filter_t filt = 
+    {
+        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_CTRL
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
+    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&mac_sniffer_cb));
+    ESP_ERROR_CHECK(esp_wifi_set_channel(ap_info[target_ap].primary, WIFI_SECOND_CHAN_NONE));
+
+}
+
+static void kill_mac_sniffer(void)
+{
+    ESP_ERROR_CHECK(esp_wifi_set_promiscuous(0));
 }
 
 //*****************************************************************************
@@ -535,51 +605,11 @@ static void sta_scan_dump_timer(void* arg)
     for(i = 0; i < active_mac_list_len; ++i)
     {
         uint8_t* m1 = get_nth_mac(i);
-        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5]);
+        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x   RSSI=%03d\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], active_mac_list_rssi[i]);
     }
     printf("\n");
 
-}
-
-static void sniffer(void* buff, wifi_promiscuous_pkt_type_t type)
-{
-    switch(type)
-    {
-        case WIFI_PKT_MGMT:
-            // printf("TYPE = MGMT\n");
-            break;
-        case WIFI_PKT_CTRL:
-            // printf("TYPE = CTRL\n");
-            break;
-        case WIFI_PKT_MISC:
-            // printf("TYPE = MISC\n");
-            break;
-        case WIFI_PKT_DATA:
-            // printf("TYPE = DATA\n");
-            break;
-        default:
-            ESP_LOGE(TAG,  "In sniffer, shouldnt be here!");
-            return; 
-    }
-
-    wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
-
-    uint8_t* m1 = p->payload + 4;
-    uint8_t* m2 = p->payload + 10;
-    uint8_t* m3 = p->payload + 16;
-
-    if(mac_is_eq(m3, ap_info[target_ap].bssid))
-    {
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 1, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5]);
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 2, m2[0], m2[1], m2[2], m2[3], m2[4], m2[5]);
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 3, m3[0], m3[1], m3[2], m3[3], m3[4], m3[5]);
-        // printf("Len = %d\n\n", p->rx_ctrl.sig_len);
-    
-        insert_mac(m1);
-        insert_mac(m2);
-    }
-
-}    
+} 
 
 static int do_sta_scan_start(int argc, char** argv)
 {
@@ -591,25 +621,13 @@ static int do_sta_scan_start(int argc, char** argv)
 
     set_sta_scan_target( (uint8_t) strtol(argv[1], NULL,10) );
 
-    // Set prom mode, set filter, reg cb
-    esp_wifi_set_promiscuous(1);
-
-    wifi_promiscuous_filter_t filt = 
-    {
-        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_CTRL
-    };
-
-    esp_wifi_set_promiscuous_filter(&filt);
-    esp_wifi_set_promiscuous_rx_cb(&sniffer);
-    esp_wifi_set_channel(ap_info[target_ap].primary, WIFI_SECOND_CHAN_NONE);
-    esp_wifi_set_mac(WIFI_IF_STA, ap_info[target_ap].bssid);
-
     const esp_timer_create_args_t periodic_timer_args = 
     {
         .callback = &sta_scan_dump_timer,
         .name = "sta scan dump timer"
     };
 
+    launch_mac_sniffer();
     
     ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 1000000));
@@ -630,13 +648,99 @@ static int do_sta_scan_stop(int argc, char** argv)
     sta_scanner_running = 0;
     clear_active_mac_list();
     ESP_ERROR_CHECK(esp_timer_stop(periodic_timer));
+    ESP_ERROR_CHECK(esp_timer_delete(periodic_timer));
 
     // Reset Wifi driver to original state
-    esp_wifi_set_promiscuous(0);
+    kill_mac_sniffer();
 
     return 0;
 }
 
+//*****************************************************************************
+// STA Scanner LCD UI APP - On init it starts scanning for MACs, periodically
+// updating the screen with number of MACS found. Pressing the button stops the
+// scanning and presents the list of MACS and an option to go back to scanning.
+// If the index is a MAC, then we start scanning only that STA, reporting the
+// rssi. A single press on this screen brings you back to scanning but does not
+// clear the set of MACs found.
+//*****************************************************************************
+static esp_timer_handle_t report_num_macs_timer;
+static uint8_t report_num_macs_timer_running = 0;
+
+static void report_num_macs_cb(void* args)
+{   
+    char line[20];
+    snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
+    push_to_line_buffer(1, line);
+    update_line(1);
+}
+
+static void scan_sta_ui_fini(void) 
+{
+    if(report_num_macs_timer_running)
+    {
+        ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
+        ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
+    }
+
+    kill_mac_sniffer();
+    clear_active_mac_list();
+}
+
+static void scan_sta_ui_cb(uint8_t index)
+{
+    if(!report_num_macs_timer_running)
+    {
+        if(index >= ap_count)
+        {
+            ESP_LOGE(TAG, "In Scan STA UI app, tried to set AP index out of range");
+            home_screen_pos();
+            return;
+        }
+
+        set_sta_scan_target(index);
+        clear_active_mac_list();
+        launch_mac_sniffer();
+
+        char line[20];
+        lock_cursor();
+        home_screen_pos();
+        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        push_to_line_buffer(0, line);
+        snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
+        push_to_line_buffer(1, line);
+        push_to_line_buffer(2, "");
+        push_to_line_buffer(3, "");
+        update_display();
+
+        const esp_timer_create_args_t args = 
+        {
+            .callback = &report_num_macs_cb,
+            .name = "sta scan ui dump mac timer"
+        };
+
+        ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
+
+        report_num_macs_timer_running = 1;
+    }
+    
+}
+
+static void scan_sta_ui_ini(void)
+{
+    lock_cursor();
+    home_screen_pos();
+    push_to_line_buffer(0, "Scanning APs...");
+    push_to_line_buffer(1, "");
+    push_to_line_buffer(2, "");
+    push_to_line_buffer(3, "");
+    update_display();
+    set_scan_all();
+    update_ap_info();
+    list_ssids_lcd();
+    unlock_cursor();
+}
 //*****************************************************************************
 // PUBLIC
 //*****************************************************************************
@@ -653,6 +757,7 @@ void init_wifi(wifi_conf_t* _conf)
 
     ap_info = malloc(_conf->scan_list_size*sizeof(wifi_ap_record_t));
     active_mac_list = malloc(MAC_LEN * _conf->scan_list_size);
+    active_mac_list_rssi = malloc(_conf->scan_list_size);
     assert(ap_info);
     assert(active_mac_list);
 
@@ -674,6 +779,7 @@ void register_wifi(void)
 
 void ui_add_wifi(void)
 {
-    add_ui_cmd("scan all", scan_ui_cmd, scan_on_press, scan_ui_cmd_fini);
-    add_ui_cmd("scan rssi", scan_rssi_ini, scan_rssi_on_press_cb, scan_rssi_fini);
+    add_ui_cmd("scan AP all", scan_ui_cmd, scan_on_press, scan_ui_cmd_fini);
+    add_ui_cmd("scan AP rssi", scan_rssi_ini, scan_rssi_on_press_cb, scan_rssi_fini);
+    add_ui_cmd("scan sta", scan_sta_ui_ini, scan_sta_ui_cb, scan_sta_ui_fini);
 }
