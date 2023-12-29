@@ -670,6 +670,27 @@ static void report_num_macs_cb(void* args)
     update_line(1);
 }
 
+static void start_report_num_macs_timer(void)
+{
+    const esp_timer_create_args_t args = 
+    {
+        .callback = &report_num_macs_cb,
+        .name = "sta scan ui dump mac timer"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
+
+    report_num_macs_timer_running = 1;
+}
+
+static void stop_report_num_macs_timer(void)
+{
+    ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
+    ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
+    report_num_macs_timer_running = 0;
+}
+
 static void report_rssi_cb(void* args)
 {   
     char line[20];
@@ -678,20 +699,37 @@ static void report_rssi_cb(void* args)
     update_line(2);
 }
 
+static void start_report_rssi_timer(void)
+{
+    const esp_timer_create_args_t args = 
+    {
+        .callback = &report_rssi_cb,
+        .name = "sta scan ui dump mac rssi timer"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&args, &report_rssi_timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(report_rssi_timer, 1000000));
+    report_rssi_timer_running = 1;
+}
+
+static void stop_report_rssi_timer(void)
+{
+    ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
+    ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
+    report_rssi_timer_running = 0;
+
+}   
+
 static void scan_sta_ui_fini(void) 
 {
     if(report_num_macs_timer_running)
     {
-        ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
-        ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
-        report_num_macs_timer_running = 0;
+        stop_report_num_macs_timer();
     }
 
     if(report_rssi_timer_running)
     {
-        ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
-        ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
-        report_rssi_timer_running = 0;
+        stop_report_rssi_timer();
     }
 
     selecting_target_mac = 0;
@@ -727,16 +765,7 @@ static void scan_sta_ui_cb(uint8_t index)
         push_to_line_buffer(3, "");
         update_display();
 
-        const esp_timer_create_args_t args = 
-        {
-            .callback = &report_num_macs_cb,
-            .name = "sta scan ui dump mac timer"
-        };
-
-        ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
-        ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
-
-        report_num_macs_timer_running = 1;
+        start_report_num_macs_timer();
         
         return;
     }
@@ -765,9 +794,7 @@ static void scan_sta_ui_cb(uint8_t index)
         }
 
 
-        ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
-        ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
-        report_num_macs_timer_running = 0;
+        stop_report_num_macs_timer();
 
         home_screen_pos();
 
@@ -812,16 +839,8 @@ static void scan_sta_ui_cb(uint8_t index)
         push_to_line_buffer(3, "");
         update_display();
 
-        const esp_timer_create_args_t args = 
-        {
-            .callback = &report_rssi_cb,
-            .name = "sta scan ui dump mac rssi timer"
-        };
+        start_report_rssi_timer();
 
-        ESP_ERROR_CHECK(esp_timer_create(&args, &report_rssi_timer));
-        ESP_ERROR_CHECK(esp_timer_start_periodic(report_rssi_timer, 1000000));
-
-        report_rssi_timer_running = 1;
         return;
     }
 
@@ -831,9 +850,7 @@ static void scan_sta_ui_cb(uint8_t index)
         // mac state. Kill the report rssi timer, reset screen and launch the
         // num macs timers
 
-        ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
-        ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
-        report_rssi_timer_running = 0;
+        stop_report_rssi_timer();
 
         lock_cursor();
         home_screen_pos();
@@ -845,16 +862,7 @@ static void scan_sta_ui_cb(uint8_t index)
         push_to_line_buffer(3, "");
         update_display();
 
-        const esp_timer_create_args_t args = 
-        {
-            .callback = &report_num_macs_cb,
-            .name = "sta scan ui dump mac timer"
-        };
-
-        ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
-        ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
-
-        report_num_macs_timer_running = 1;
+        start_report_num_macs_timer();
         
         return;
     }
@@ -874,6 +882,7 @@ static void scan_sta_ui_ini(void)
     list_ssids_lcd();
     unlock_cursor();
 }
+
 //*****************************************************************************
 // PUBLIC
 //*****************************************************************************
