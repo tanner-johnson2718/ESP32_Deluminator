@@ -37,7 +37,13 @@ To get stated analyzing this attack we need to look at exactly how one knows tha
 
 # WIFI packet Basic Structure
 
+```
+
+-----------------------------------------------------------------
 | FC | Dur | DA | SA | BSSID | Seq | A4 | QoS | HT | Body | FCS |
+-----------------------------------------------------------------
+
+```
 
 * FC = Frame Control. Most importantly defines frame type and sub type. See [here](https://en.wikipedia.org/wiki/802.11_Frame_Types)
 * Dur = Duration. Usually denotes the amount requested or granted of airtime
@@ -46,14 +52,35 @@ To get stated analyzing this attack we need to look at exactly how one knows tha
 * BSSID = MAC of AP
 * Seq = Sequence Number
 * A4 = MAC 4 only present in frames between APs
+* QoS = Quality of Service
+* HT = High Throughput
 * Body = Main body of packet
 * FCS = CRC of packet including header
 
+Each of these fields have drastically different meanings based on the type of frame of which there are 4 major types:
 
-# Probe
+* Data
+* Control
+* Management
+* Misc
+
+Below we look at a very very small subset of the packet and their contents as it relates to this attack
+
+
+## Beacon
+
+
+## Probe
 
 * Deliberatley sent by the station (STA) to the AP
+
+## Authentication
+
+## Deauthentication
+
+## WPA2 EAPOL Frames
 
 # Resources
 
 * [Wiki on Wifi Frame](https://en.wikipedia.org/wiki/802.11_Frame_Types)
+* [Wiki on 802.11](https://en.wikipedia.org/wiki/IEEE_802.11#Layer_2_%E2%80%93_Datagrams)
