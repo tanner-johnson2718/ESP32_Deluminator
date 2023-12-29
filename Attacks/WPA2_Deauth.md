@@ -29,4 +29,31 @@ These steps can be executed on a linux box with the following
 * To restore if -> `sudo airmon-ng stop wlp5s0mon && sudo ifconfig wlp5s0 up`
 * To crack with hashcat Install hashcat and haschcat-utils
     * Convert the `.cap` to a `.hccapx`
-    * `hashcat -m 2500 -a 0 <hhcapx> <wordlist>` will do a straight dictionary attack 
+    * `hashcat -m 2500 -a 0 <hhcapx> <wordlist>` will do a straight dictionary attack
+
+# Probes, Beacons, and Wifi Packets
+
+To get stated analyzing this attack we need to look at exactly how one knows that an access point or AP is avaiable. After all this attack targets a single and deliberately chosen AP. The best way to start analyzing packets is with wireshark which can be installed with the `apt` mananger. One can run this `sudo airodump-ng wlp5s0mon -c <chan> --bssid <AP MAC> -w <file_name>` followed by running wire shark on the outputted .cap file. In wireshark you can filter out alot of the noise on the channel with the filter `wlan.addr == <bssid> `.
+
+# WIFI packet Basic Structure
+
+| FC | Dur | DA | SA | BSSID | Seq | A4 | QoS | HT | Body | FCS |
+
+* FC = Frame Control. Most importantly defines frame type and sub type. See [here](https://en.wikipedia.org/wiki/802.11_Frame_Types)
+* Dur = Duration. Usually denotes the amount requested or granted of airtime
+* DA = Destination Address
+* SA = Source Address
+* BSSID = MAC of AP
+* Seq = Sequence Number
+* A4 = MAC 4 only present in frames between APs
+* Body = Main body of packet
+* FCS = CRC of packet including header
+
+
+# Probe
+
+* Deliberatley sent by the station (STA) to the AP
+
+# Resources
+
+* [Wiki on Wifi Frame](https://en.wikipedia.org/wiki/802.11_Frame_Types)

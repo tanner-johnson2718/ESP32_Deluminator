@@ -141,7 +141,7 @@ static void _set_scan_target(int32_t i)
 // Station Scan helper funcs
 //*****************************************************************************
 
-static uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
+static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
 {
     uint8_t i = 0;
     for(; i < MAC_LEN; ++i)
@@ -155,7 +155,7 @@ static uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
     return 1;
 }
 
-static uint8_t* get_nth_mac(uint8_t n)
+static inline uint8_t* get_nth_mac(uint8_t n)
 {
     return active_mac_list + (n*MAC_LEN);
 }
@@ -226,25 +226,11 @@ static void set_sta_scan_target(uint8_t ap_index)
 
 static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
-    switch(type)
+    if(type != WIFI_PKT_DATA)
     {
-        case WIFI_PKT_MGMT:
-            // printf("TYPE = MGMT\n");
-            break;
-        case WIFI_PKT_CTRL:
-            // printf("TYPE = CTRL\n");
-            break;
-        case WIFI_PKT_MISC:
-            // printf("TYPE = MISC\n");
-            break;
-        case WIFI_PKT_DATA:
-            // printf("TYPE = DATA\n");
-            break;
-        default:
-            ESP_LOGE(TAG,  "In sniffer, shouldnt be here!");
-            return; 
+        return;
     }
-
+   
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
 
     // uint8_t* m1 = p->payload + 4;
@@ -259,6 +245,11 @@ static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
         // printf("Len = %d\n\n", p->rx_ctrl.sig_len);
     
         insert_mac(m2, p->rx_ctrl.rssi);
+
+        if((p->rx_ctrl.sig_len > 0x22) && (p->payload[0x20] == 0x88) && (p->payload[0x21] == 0x8e))
+        {
+            printf("KEY INFO HERE\n");
+        }
     }
 
 }
@@ -269,7 +260,7 @@ static void launch_mac_sniffer()
 
     wifi_promiscuous_filter_t filt = 
     {
-        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_CTRL
+        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
@@ -665,7 +656,11 @@ static int do_sta_scan_stop(int argc, char** argv)
 // clear the set of MACs found.
 //*****************************************************************************
 static esp_timer_handle_t report_num_macs_timer;
+static esp_timer_handle_t report_rssi_timer;
 static uint8_t report_num_macs_timer_running = 0;
+static uint8_t selecting_target_mac = 0;
+static uint8_t report_rssi_timer_running = 0;
+static uint8_t target_mac = 0;
 
 static void report_num_macs_cb(void* args)
 {   
@@ -675,13 +670,31 @@ static void report_num_macs_cb(void* args)
     update_line(1);
 }
 
+static void report_rssi_cb(void* args)
+{   
+    char line[20];
+    snprintf(line, 19, "RSSI = %03d   ", active_mac_list_rssi[target_mac]);
+    push_to_line_buffer(2, line);
+    update_line(2);
+}
+
 static void scan_sta_ui_fini(void) 
 {
     if(report_num_macs_timer_running)
     {
         ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
         ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
+        report_num_macs_timer_running = 0;
     }
+
+    if(report_rssi_timer_running)
+    {
+        ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
+        ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
+        report_rssi_timer_running = 0;
+    }
+
+    selecting_target_mac = 0;
 
     kill_mac_sniffer();
     clear_active_mac_list();
@@ -689,7 +702,9 @@ static void scan_sta_ui_fini(void)
 
 static void scan_sta_ui_cb(uint8_t index)
 {
-    if(!report_num_macs_timer_running)
+    char line[20];
+
+    if(!report_num_macs_timer_running && !selecting_target_mac && !report_rssi_timer_running)
     {
         if(index >= ap_count)
         {
@@ -702,7 +717,6 @@ static void scan_sta_ui_cb(uint8_t index)
         clear_active_mac_list();
         launch_mac_sniffer();
 
-        char line[20];
         lock_cursor();
         home_screen_pos();
         strncpy(line, (char*) ap_info[target_ap].ssid, 19);
@@ -723,8 +737,127 @@ static void scan_sta_ui_cb(uint8_t index)
         ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
 
         report_num_macs_timer_running = 1;
+        
+        return;
+    }
+
+    if(report_num_macs_timer_running && !selecting_target_mac && !report_rssi_timer_running)
+    {
+        // The timer was running collecting MACS and reporting the number. On
+        // button press we now show the MACS collected and wait for another
+        // button click, selecting the MAC.
+
+        // Try to grab the mac list lock cuz we dont want anyone messing with
+        // it while we select an active mac. Will release it once we select a 
+        // MAC
+
+        if(!xSemaphoreTake(active_mac_list_lock, 10 / portTICK_PERIOD_MS))
+        {
+            ESP_LOGE(TAG, "In scan_sta_ui_cb, failed to grab lock ... busy");
+            return;
+        }
+
+        if(active_mac_list_len == 0)
+        {
+            ESP_LOGI(TAG, "In scan sta ui cb, no moving to select mac state as non are avaible");
+            assert(xSemaphoreGive(active_mac_list_lock));
+            return;
+        }
+
+
+        ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
+        ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
+        report_num_macs_timer_running = 0;
+
+        home_screen_pos();
+
+        uint8_t i;
+        for(i = 0; i < active_mac_list_len; ++i)
+        {
+            snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(i)[0], get_nth_mac(i)[1], get_nth_mac(i)[2],get_nth_mac(i)[3],get_nth_mac(i)[4],get_nth_mac(i)[5]);
+            push_to_line_buffer(i, line);
+        }
+
+        update_display();
+        unlock_cursor();
+        selecting_target_mac = 1;
+
+        return;
     }
     
+    if(!report_num_macs_timer_running && selecting_target_mac && !report_rssi_timer_running)
+    {
+        // Now index carries the MAC we which to do an RSSI scan on, check to
+        // see if its in bounds, set up screen and timer and launch timer. Also
+        // be sure to give the lock up
+
+        if(index >= active_mac_list_len)
+        {
+            ESP_LOGE(TAG, "In scan sta ui cb selecting MAC out of range");
+            return;
+        }
+
+        target_mac = index;
+        selecting_target_mac = 0;
+        assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
+
+        lock_cursor();
+        home_screen_pos();
+        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        push_to_line_buffer(0, line);
+        snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(target_mac)[0], get_nth_mac(target_mac)[1], get_nth_mac(target_mac)[2],get_nth_mac(target_mac)[3],get_nth_mac(target_mac)[4],get_nth_mac(target_mac)[5]);
+        push_to_line_buffer(1, line);
+        snprintf(line, 19, "RSSI = %03d   ", active_mac_list_rssi[target_mac]);
+        push_to_line_buffer(2, line);
+        push_to_line_buffer(3, "");
+        update_display();
+
+        const esp_timer_create_args_t args = 
+        {
+            .callback = &report_rssi_cb,
+            .name = "sta scan ui dump mac rssi timer"
+        };
+
+        ESP_ERROR_CHECK(esp_timer_create(&args, &report_rssi_timer));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(report_rssi_timer, 1000000));
+
+        report_rssi_timer_running = 1;
+        return;
+    }
+
+    if(!report_num_macs_timer_running && !selecting_target_mac && report_rssi_timer_running)
+    {
+        // This cancels our rssi timer and should bring us back to report num
+        // mac state. Kill the report rssi timer, reset screen and launch the
+        // num macs timers
+
+        ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
+        ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
+        report_rssi_timer_running = 0;
+
+        lock_cursor();
+        home_screen_pos();
+        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        push_to_line_buffer(0, line);
+        snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
+        push_to_line_buffer(1, line);
+        push_to_line_buffer(2, "");
+        push_to_line_buffer(3, "");
+        update_display();
+
+        const esp_timer_create_args_t args = 
+        {
+            .callback = &report_num_macs_cb,
+            .name = "sta scan ui dump mac timer"
+        };
+
+        ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
+
+        report_num_macs_timer_running = 1;
+        
+        return;
+    }
 }
 
 static void scan_sta_ui_ini(void)
@@ -781,5 +914,5 @@ void ui_add_wifi(void)
 {
     add_ui_cmd("scan AP all", scan_ui_cmd, scan_on_press, scan_ui_cmd_fini);
     add_ui_cmd("scan AP rssi", scan_rssi_ini, scan_rssi_on_press_cb, scan_rssi_fini);
-    add_ui_cmd("scan sta", scan_sta_ui_ini, scan_sta_ui_cb, scan_sta_ui_fini);
+    add_ui_cmd("scan STA", scan_sta_ui_ini, scan_sta_ui_cb, scan_sta_ui_fini);
 }

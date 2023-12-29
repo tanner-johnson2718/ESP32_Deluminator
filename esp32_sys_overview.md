@@ -286,10 +286,23 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
 
 # Wifi
 
-* wifi scanning?
-* how come we need todo a netif_init to use wifi? Or do we?
+* init code
+    * net if x2
+    * default settings, etc
+* AP scanning
+    * Packet Strcuture
+    * Beacons / Probe request
+        * What AP responses look like
+    * internal data structures, API, and config
+* STA Scanning
+    * Packet Str
+* REPL Commands
+* UI Program
+* 
+
 * wifi api link
 * netif api link
+* ESP timer api link
 
 # Tasks / FreeRTOS
 
