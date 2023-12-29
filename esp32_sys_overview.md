@@ -290,12 +290,9 @@ xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL
     * net if x2
     * default settings, etc
 * AP scanning
-    * Packet Strcuture
-    * Beacons / Probe request
-        * What AP responses look like
     * internal data structures, API, and config
 * STA Scanning
-    * Packet Str
+    * internal data structures, API and config
 * REPL Commands
 * UI Program
 * 

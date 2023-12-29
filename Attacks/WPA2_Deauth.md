@@ -64,15 +64,29 @@ Each of these fields have drastically different meanings based on the type of fr
 * Management
 * Misc
 
-Below we look at a very very small subset of the packet and their contents as it relates to this attack
-
+Below we look at a very very small subset of the packet and their contents as it relates to this attack.
 
 ## Beacon
 
+* Sent automatically by all acccess points at a regular interval.
+* FC = 0x8000
+    * This decodes to a frame of type Management and a subtype of beacon
+* DA = ff:ff:ff:ff:ff:ff and SA=BSSID
+* In a beacon frame rate of beacon frame sent is advertised
+* Capabilites, SSID (the ascii name of the AP), Supported rates are all sent.
+* To see this, do a dump with the `-e` flag targeting an AP: `sudo airodump-ng wlp5s0mon -e --bssid B6:FE:F4:C3:ED:EE -c 6 -w out`
+* Open wire shark on the .cap file and you should see a butt load of beacons
+* When scanning for APs listening for beacons is considered a passive scan
 
 ## Probe
 
-* Deliberatley sent by the station (STA) to the AP
+* Deliberatley sent by the station (STA) to the AP aka an active AP scan
+* FC = 0x4000
+    * This decodes to a managment type with probe request sub type
+* DA = ff:ff:ff:ff:ff:ff = BSSID
+* SA = <sender MAC>
+* The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
+* To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
 
 ## Authentication
 
