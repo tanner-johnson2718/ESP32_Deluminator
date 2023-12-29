@@ -69,9 +69,9 @@ Below we look at a very very small subset of the packet and their contents as it
 ## Beacon
 
 * Sent automatically by all acccess points at a regular interval.
-* FC = 0x8000
+* FC = `0x8000`
     * This decodes to a frame of type Management and a subtype of beacon
-* DA = ff:ff:ff:ff:ff:ff and SA=BSSID
+* DA = `ff:ff:ff:ff:ff:ff` and SA=BSSID
 * In a beacon frame rate of beacon frame sent is advertised
 * Capabilites, SSID (the ascii name of the AP), Supported rates are all sent.
 * To see this, do a dump with the `-e` flag targeting an AP: `sudo airodump-ng wlp5s0mon -e --bssid B6:FE:F4:C3:ED:EE -c 6 -w out`
@@ -81,9 +81,9 @@ Below we look at a very very small subset of the packet and their contents as it
 ## Probe
 
 * Deliberatley sent by the station (STA) to the AP aka an active AP scan
-* FC = 0x4000
+* FC = `0x4000`
     * This decodes to a managment type with probe request sub type
-* DA = ff:ff:ff:ff:ff:ff = BSSID
+* DA = `ff:ff:ff:ff:ff:ff` = BSSID
 * SA = <sender MAC>
 * The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
 * To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
