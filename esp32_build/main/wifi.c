@@ -32,22 +32,21 @@ static const char* TAG = "WIFI";
 static wifi_ap_record_t ap_info[sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint16_t ap_count = 0;
 
-static esp_netif_t *sta_netif = NULL;
-static esp_netif_t *ap_netif = NULL;
+// Maintain an "active" mac list. That is we choose an AP to target and we
+// log every STA MAC that is associated with that AP. The active mac list gets
+// updated by the packet sniffer, scanning packets for STAs on an ap, WPA2
+// handshakes and strength of STAs
+static uint8_t pkt_sniffer_running = 0;
 
-// Maintain an "active ap" mac list. That is we choose an AP to target and we
-// log every STA MAC that is associated with that AP. We also can launch a
-// promiscious packet sniffer that will listen for WPA handshakes
 struct sta
 {
     uint8_t mac[MAC_LEN];
     int8_t rssi;
-} typedef sta_t;
+} typedef active_mac_t;
 
-static sta_t active_mac_list[sizeof(sta_t) * DEFAULT_SCAN_LIST_SIZE];
+static active_mac_t active_mac_list[sizeof(active_mac_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint8_t active_mac_list_len = 0;
-static uint8_t target_ap = 0;
-static uint8_t sta_scanner_running = 0;
+static int8_t active_mac_target_ap = -1;
 static SemaphoreHandle_t active_mac_list_lock;
 
 // We allocate a single buffer to store a single WPA2 handshake. When scanning
@@ -74,6 +73,9 @@ static uint8_t gp_timer_running = 0;
 
 static void _init_wifi()
 {
+    esp_netif_t *sta_netif = NULL;
+    esp_netif_t *ap_netif = NULL;
+
     ESP_ERROR_CHECK(esp_netif_init());
     sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
@@ -119,6 +121,8 @@ static void gp_timer_create_n_start(void* fp)
     ESP_ERROR_CHECK(esp_timer_create(&gp_timer_args, &gp_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(gp_timer, TIMER_DELAY_MS*1000));
     gp_timer_running = 1;
+
+    ESP_LOGI(TAG, "GP Timer started");
 }
 
 static void gp_timer_stop_n_destroy(void)
@@ -132,14 +136,17 @@ static void gp_timer_stop_n_destroy(void)
     ESP_ERROR_CHECK(esp_timer_stop(gp_timer));
     ESP_ERROR_CHECK(esp_timer_delete(gp_timer));
     gp_timer_running = 0;
+
+    ESP_LOGI(TAG, "GP Timer Stopped");
 }
 
 //*****************************************************************************
-// AP Scan Helper Funcs
+// AP List Accessor Funcs
 //*****************************************************************************
 
 static void update_ap_info()
 {
+    ESP_LOGI(TAG, "Scanning and Updating AP List");
     uint16_t max_ap_count = DEFAULT_SCAN_LIST_SIZE;
     esp_wifi_scan_start(NULL, true);
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
@@ -153,22 +160,8 @@ static void update_ap_info()
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
 }
 
-static int32_t find_ap(char* ssid)
-{
-    int32_t i;
-    for(i = 0; i < ap_count; ++i)
-    {
-        if(!strcmp(ssid, (char*)ap_info[i].ssid))
-        {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
 //*****************************************************************************
-// Station Scan helper funcs
+// Active MAC List Accessor Functions
 //*****************************************************************************
 
 static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
@@ -275,10 +268,17 @@ static void clear_active_mac_list(void)
     }
 
     active_mac_list_len = 0;
+    active_mac_target_ap = -1;
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
+
+    ESP_LOGI(TAG, "Active MAC List Cleared");
 }
 
-static void set_sta_scan_target(uint8_t ap_index)
+//*****************************************************************************
+// PKT Sniffer Code
+//*****************************************************************************
+
+static void set_active_mac_ap_target(uint8_t ap_index)
 {
     if(ap_index >= ap_count )
     {
@@ -286,8 +286,8 @@ static void set_sta_scan_target(uint8_t ap_index)
         return;
     }
 
-    ESP_LOGI(TAG, "STA Scan target set to %s", ap_info[ap_index].ssid);
-    target_ap = ap_index;
+    ESP_LOGI(TAG, "Active Mac Scan AP target set to %s", ap_info[ap_index].ssid);
+    active_mac_target_ap = ap_index;
 
 }
 
@@ -326,30 +326,17 @@ static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
         uint8_t to = get_to_ds(p);
         uint8_t from = get_from_ds(p);
 
-        if(s == 0 && to == 0 && from == 1)
-        {
-            num = 0;
-            
-        }
-        else if(s == 0 && to == 1 && from == 0)
-        {
-            num = 1;
-        }
-        else if(s == 1 && to == 0 && from == 1)
-        {
-            num = 2;
-        }
-        else if(s == 1 && to == 1 && from == 0)
-        {
-            num = 3;
-        }
+        if     (s == 0 && to == 0 && from == 1) { num = 0; }
+        else if(s == 0 && to == 1 && from == 0) { num = 1; }
+        else if(s == 1 && to == 0 && from == 1) { num = 2; }
+        else if(s == 1 && to == 1 && from == 0) { num = 3; }
         else
         {
             ESP_LOGE(TAG, "WAAAHHH -> seq=%d   to_ds=%d   from_ds=%d", s, to, from);
             return;
         }
 
-        ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d/4)", ap_info[target_ap].ssid, num+1);
+        ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d/4)", ap_info[active_mac_target_ap].ssid, num+1);
 
         if(!xSemaphoreTake(eapol_lock, EAPOl_SEMA_TIMEOUT_MS / portTICK_PERIOD_MS))
         {
@@ -371,7 +358,7 @@ static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
     }
 }
 
-static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
+static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
    
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
@@ -380,25 +367,25 @@ static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     uint8_t* m2 = p->payload + 10;
     uint8_t* m3 = p->payload + 16;
 
-    if(mac_is_eq(m3, ap_info[target_ap].bssid))
+    if(mac_is_eq(m3, ap_info[active_mac_target_ap].bssid))
     {
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 1, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5]);
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 2, m2[0], m2[1], m2[2], m2[3], m2[4], m2[5]);
-        // printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x\n", 3, m3[0], m3[1], m3[2], m3[3], m3[4], m3[5]);
-        // printf("Len = %d\n\n", p->rx_ctrl.sig_len);
-    
         insert_mac(m2, p->rx_ctrl.rssi);
-
         eapol_pkt_parse(p->payload, p->rx_ctrl.sig_len);
     }
 
 }
 
-static void launch_mac_sniffer()
+static void launch_pkt_sniffer()
 {
-    if(sta_scanner_running)
+    if(pkt_sniffer_running)
     {
-        ESP_LOGE(TAG, "Called launch mac sniffer when already running");
+        ESP_LOGE(TAG, "Called launch_pkt_sniffer when already running");
+        return;
+    }
+
+    if(active_mac_target_ap == -1)
+    {
+        ESP_LOGE(TAG, "Called launch_pkt_sniffer without setting an active MAC AP target");
         return;
     }
 
@@ -410,26 +397,124 @@ static void launch_mac_sniffer()
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&mac_sniffer_cb));
-    ESP_ERROR_CHECK(esp_wifi_set_channel(ap_info[target_ap].primary, WIFI_SECOND_CHAN_NONE));
-    sta_scanner_running = 1;
+    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&pkt_sniffer_cb));
+    ESP_ERROR_CHECK(esp_wifi_set_channel(ap_info[active_mac_target_ap].primary, WIFI_SECOND_CHAN_NONE));
+    pkt_sniffer_running = 1;
+
+    ESP_LOGI(TAG, "Pkt Sniffer Running w/ target AP ssid = %s", ap_info[active_mac_target_ap].ssid);
 
 }
 
-static void kill_mac_sniffer(void)
+static void kill_pkt_sniffer(void)
 {
-    if(!sta_scanner_running)
+    if(!pkt_sniffer_running)
     {
-        ESP_LOGE(TAG, "Called kill_mac_sniffer when not running");
+        ESP_LOGE(TAG, "Called kill_pkt_sniffer when not running");
         return;
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(0));
-    sta_scanner_running = 0;
+    pkt_sniffer_running = 0;
+
+    ESP_LOGI(TAG, "Pkt Sniffer Killed");
 }
 
 //*****************************************************************************
-// UI SCAN CMD. Pretty straightforward lcd UI command. On init of this cmd we
+// REPL SCAN AP CMD
+//*****************************************************************************
+
+static int do_repl_scan_ap(int argc, char** argv)
+{
+    update_ap_info();
+
+    int i;
+    for(i = 0; i < ap_count; ++i)
+    {
+        printf("%d - SSID=%-19s   BSSID=%02x:%02x:%02x:%02x:%02x:%02x   Channel=%02d   RSSI=%03d\n", i, ap_info[i].ssid, ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5], ap_info[i].primary, ap_info[i].rssi);
+    }
+
+    return 0;
+}
+
+//*****************************************************************************
+// REPL SCAN MAC CMD
+//*****************************************************************************
+
+static void repl_scan_mac_time_cb(void* arg)
+{
+    uint8_t i;
+    for(i = 0; i < active_mac_list_len; ++i)
+    {
+        uint8_t* m1 = get_nth_mac(i);
+        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x   RSSI=%03d\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], get_nth_rssi(i));
+    }
+    printf("\n");
+
+} 
+
+static int do_repl_scan_mac_start(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        ESP_LOGE(TAG, "Usage: scan_mac_start <ssid index>");
+        return 1;
+    }
+
+    if(ap_count == 0)
+    {
+        ESP_LOGE(TAG, "Please run an AP scan or get to area with APs");
+        return 1;
+    }
+
+    set_active_mac_ap_target( (uint8_t) strtol(argv[1], NULL,10) );
+
+    if(pkt_sniffer_running)
+    {
+        ESP_LOGE(TAG, "In do_repl_scan_mac_start - PKT Sniffer Already Running");
+    }
+    else
+    {
+        launch_pkt_sniffer();
+    }
+
+    if(gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In do_repl_scan_mac_start - GP Timer in use");
+    }
+    else
+    {
+        gp_timer_create_n_start(&repl_scan_mac_time_cb);
+    }
+
+    return 0;
+}
+
+static int do_repl_scan_mac_stop(int argc, char** argv)
+{
+    if(!gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In do_repl_scan_mac_stop- GP timer already killed");
+    }
+    else
+    {
+        gp_timer_stop_n_destroy();
+    }
+
+    if(!pkt_sniffer_running)
+    {
+        ESP_LOGE(TAG, "In do_repl_scan_mac_stop - PKT Sniffer already killed");
+    }
+    else
+    {
+        kill_pkt_sniffer();
+        clear_active_mac_list();
+    }
+
+    return 0;
+}
+
+//*****************************************************************************
+// UI SCAN AP. Pretty straightforward lcd UI command. On init of this cmd we
 // home the screen, clear it and put an indicator that we are scanning. And 
 // lock the cursor cause we dont want anyone messing around. We then push the
 // AP info to the buff, unlock cursor and return. Nothing to do for button cb
@@ -443,36 +528,38 @@ void lcd_dump_ap(uint8_t i, uint8_t* line_counter)
     strncpy(line_buff, (char*) ap_info[i].ssid, 19);
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-    ESP_LOGI(TAG, "%s", line_buff);
 
     snprintf(line_buff,19, "%02x:%02x:%02x:%02x:%02x:%02x", ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-    ESP_LOGI(TAG, "%s", line_buff);
 
     snprintf(line_buff,19, "Channel=%02d", ap_info[i].primary);
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-    ESP_LOGI(TAG, "%s", line_buff);
 
     snprintf(line_buff,19, "RSSI=%03d", ap_info[i].rssi);
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-    ESP_LOGI(TAG, "%s", line_buff);
 
     line_buff[0] = ' ';
     line_buff[1] = (char) 0;
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-    ESP_LOGI(TAG, "%s", line_buff);
 }
 
-void scan_on_press(uint8_t i){}
-void scan_ui_cmd_fini(void){}
-
-void scan_ui_cmd(void)
+void ui_scan_ap_cb(uint8_t i)
 {
-    ESP_LOGI(TAG, "SCAN ALL UI CMD");
+    ESP_LOGI(TAG, "UI SCAN AP CMD CB");
+}
+
+void ui_scan_ap_fini(void)
+{
+    ESP_LOGI(TAG, "UI SCAN AP CMD FINI");
+}
+
+void ui_scan_ap_ini(void)
+{
+    ESP_LOGI(TAG, "UI SCAN AP CMD INI");
 
     lock_cursor();
     home_screen_pos();
@@ -493,73 +580,6 @@ void scan_ui_cmd(void)
     unlock_cursor();
     
     return;   // updates display upon return
-}
-
-//*****************************************************************************
-// REPL AP Scan Cmds
-//*****************************************************************************
-
-static int do_dump_ap_info(int argc, char** argv)
-{
-    update_ap_info();
-
-    int i;
-    for(i = 0; i < ap_count; ++i)
-    {
-        printf("%d - SSID=%-19s   BSSID=%02x:%02x:%02x:%02x:%02x:%02x   Channel=%02d   RSSI=%03d\n", i, ap_info[i].ssid, ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5], ap_info[i].primary, ap_info[i].rssi);
-    }
-
-    return 0;
-}
-
-//*****************************************************************************
-// STA Scanner REPL CMD
-//*****************************************************************************
-
-static void sta_scan_dump_timer(void* arg)
-{
-    uint8_t i;
-    for(i = 0; i < active_mac_list_len; ++i)
-    {
-        uint8_t* m1 = get_nth_mac(i);
-        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x   RSSI=%03d\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], get_nth_rssi(i));
-    }
-    printf("\n");
-
-} 
-
-static int do_sta_scan_start(int argc, char** argv)
-{
-    if(argc != 2)
-    {
-        ESP_LOGE(TAG, "Usage: sta_scan_start <ssid index>");
-        return 1;
-    }
-
-    set_sta_scan_target( (uint8_t) strtol(argv[1], NULL,10) );
-    clear_active_mac_list();
-    launch_mac_sniffer();
-    gp_timer_create_n_start(&sta_scan_dump_timer);
-
-    return 0;
-}
-
-static int do_sta_scan_stop(int argc, char** argv)
-{
-    if(!gp_timer_running)
-    {
-        ESP_LOGE(TAG, "STA Scanner not running");
-        return 1;
-    }
-
-    gp_timer_stop_n_destroy();
-
-    // Reset Wifi driver to original state
-    kill_mac_sniffer();
-    clear_active_mac_list();
-
-
-    return 0;
 }
 
 //*****************************************************************************
@@ -586,12 +606,21 @@ static void report_num_macs_cb(void* args)
 
 static void start_report_num_macs_timer(void)
 {
+    if(gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In start_report_num_macs_timer - GP timer in use");
+    }
     gp_timer_create_n_start(&report_num_macs_cb);
     report_num_macs_timer_running = 1;
 }
 
 static void stop_report_num_macs_timer(void)
 {
+    if(!gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In stop_report_num_macs_timer - GP timer already killed");
+    }
+
     gp_timer_stop_n_destroy();
     report_num_macs_timer_running = 0;
 }
@@ -606,12 +635,22 @@ static void report_rssi_cb(void* args)
 
 static void start_report_rssi_timer(void)
 {
+    if(gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In start_report_rssi_timer - GP timer in use");
+    }
+
     gp_timer_create_n_start(&report_rssi_cb);
     report_rssi_timer_running = 1;
 }
 
 static void stop_report_rssi_timer(void)
 {
+    if(!gp_timer_running)
+    {
+        ESP_LOGE(TAG, "In start_report_rssi_timer - GP timer already killed");
+    }
+
     gp_timer_stop_n_destroy();
     report_rssi_timer_running = 0;
 }
@@ -624,12 +663,13 @@ static void list_ssids_lcd(void)
     {
         strncpy(line_buff, (char*) ap_info[i].ssid, 19);
         push_to_line_buffer(i, line_buff);
-        ESP_LOGI(TAG, "%s", line_buff);
     }
 }
 
-static void scan_sta_ui_fini(void) 
+static void ui_scan_mac_fini(void) 
 {
+    ESP_LOGI(TAG, "UI SCAN MAC CMD FINI");
+
     if(report_num_macs_timer_running)
     {
         stop_report_num_macs_timer();
@@ -642,12 +682,22 @@ static void scan_sta_ui_fini(void)
 
     selecting_target_mac = 0;
 
-    kill_mac_sniffer();
+    if(!pkt_sniffer_running)
+    {   
+        ESP_LOGE(TAG, "In ui_scan_mac_fini - Pkt Sniffer Already Killed");
+    }
+    else
+    {
+        kill_pkt_sniffer();    
+    }
+
     clear_active_mac_list();
 }
 
-static void scan_sta_ui_cb(uint8_t index)
+static void ui_scan_mac_cb(uint8_t index)
 {
+    ESP_LOGI(TAG, "UI SCAN AP CMD CB");
+
     char line[20];
 
     if(!report_num_macs_timer_running && !selecting_target_mac && !report_rssi_timer_running)
@@ -659,13 +709,20 @@ static void scan_sta_ui_cb(uint8_t index)
             return;
         }
 
-        set_sta_scan_target(index);
-        clear_active_mac_list();
-        launch_mac_sniffer();
+        set_active_mac_ap_target(index);
 
+        if(pkt_sniffer_running)
+        {
+            ESP_LOGE(TAG, "In ui_scan_mac_cb - Pkt Sniffer already running");
+        }
+        else
+        {
+            launch_pkt_sniffer();
+        }
+        
         lock_cursor();
         home_screen_pos();
-        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
         push_to_line_buffer(0, line);
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
         push_to_line_buffer(1, line);
@@ -744,11 +801,11 @@ static void scan_sta_ui_cb(uint8_t index)
 
         lock_cursor();
         home_screen_pos();
-        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
         push_to_line_buffer(0, line);
-        snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(target_mac)[0], get_nth_mac(target_mac)[1], get_nth_mac(target_mac)[2],get_nth_mac(target_mac)[3],get_nth_mac(target_mac)[4],get_nth_mac(target_mac)[5]);
+        snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(active_mac_target_ap)[0], get_nth_mac(active_mac_target_ap)[1], get_nth_mac(active_mac_target_ap)[2],get_nth_mac(active_mac_target_ap)[3],get_nth_mac(active_mac_target_ap)[4],get_nth_mac(active_mac_target_ap)[5]);
         push_to_line_buffer(1, line);
-        snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
+        snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(active_mac_target_ap));
         push_to_line_buffer(2, line);
         push_to_line_buffer(3, "");
         update_display();
@@ -768,7 +825,7 @@ static void scan_sta_ui_cb(uint8_t index)
 
         lock_cursor();
         home_screen_pos();
-        strncpy(line, (char*) ap_info[target_ap].ssid, 19);
+        strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
         push_to_line_buffer(0, line);
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
         push_to_line_buffer(1, line);
@@ -782,8 +839,10 @@ static void scan_sta_ui_cb(uint8_t index)
     }
 }
 
-static void scan_sta_ui_ini(void)
+static void ui_scan_mac_ini(void)
 {
+    ESP_LOGI(TAG, "UI SCAN AP CMD INI");
+
     lock_cursor();
     home_screen_pos();
     push_to_line_buffer(0, "Scanning APs...");
@@ -812,13 +871,13 @@ void init_wifi(void)
 
 void register_wifi(void)
 {
-    register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_dump_ap_info);
-    register_no_arg_cmd("sta_scan_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_sta_scan_start);
-    register_no_arg_cmd("sta_scan_stop", "Stop a scan of stations on an AP", &do_sta_scan_stop);
+    register_no_arg_cmd("scan_ap", "Scan for all Wifi APs", &do_repl_scan_ap);
+    register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
+    register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
 }
 
 void ui_add_wifi(void)
 {
-    add_ui_cmd("scan AP all", scan_ui_cmd, scan_on_press, scan_ui_cmd_fini);
-    add_ui_cmd("scan STA", scan_sta_ui_ini, scan_sta_ui_cb, scan_sta_ui_fini);
+    add_ui_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini);
+    add_ui_cmd("Scan MAC", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini);
 }

@@ -51,7 +51,6 @@ void app_main(void)
     // UI add cmds
     ui_add_wifi();
 
-
     start_ui();
     start_repl();  // no return
 }
