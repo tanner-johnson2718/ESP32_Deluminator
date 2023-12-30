@@ -7,6 +7,7 @@
 #include "esp_console.h"
 #include "esp_event.h"
 #include "esp_timer.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "repl.h"
@@ -73,31 +74,48 @@ static esp_timer_create_args_t gp_timer_args =
 };
 static uint8_t gp_timer_running = 0;
 
-static void _init_wifi()
+// We maintain an access point that we call the SoC AP to differentiate it
+// from our ap list above that we get scanning. We only allow one station to
+// connect at a time. Client aid of -1 indicates noone is  connected.
+static uint8_t client_mac[MAC_LEN];
+static int8_t  client_aid = -1;
+
+//*****************************************************************************
+// SoC AP Funcs
+//*****************************************************************************
+
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                                    int32_t event_id, void* event_data)
 {
-    esp_netif_t *sta_netif = NULL;
-    esp_netif_t *ap_netif = NULL;
+    if (event_id == WIFI_EVENT_AP_STACONNECTED) 
+    {
+        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
+        ESP_LOGI(TAG, "station "MACSTR" join, AID=%d", MAC2STR(event->mac), event->aid);
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    sta_netif = esp_netif_create_default_wifi_sta();
-    assert(sta_netif);
+        memcpy(client_mac, event->mac, MAC_LEN);
+        client_aid = event->aid;
+    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
+    {
+        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
+        ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d", MAC2STR(event->mac), event->aid);
+        client_aid = -1;
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Unhandled WIFI event");
+    }
+}
 
-    ap_netif = esp_netif_create_default_wifi_ap();
-    assert(ap_netif);
-    
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_start());
+static void deauth_client(void)
+{
+    if(client_aid == -1)
+    {
+        ESP_LOGE(TAG, "in deauth client - tried to deauth client when none exists");
+        return;
+    }
 
-    uint8_t mac[6];
-    ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
-    ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-
-    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
-    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+    ESP_ERROR_CHECK(esp_wifi_deauth_sta(client_aid));
+    ESP_LOGI(TAG, "station "MACSTR" kicked, AID = %d", MAC2STR(client_mac), client_aid);  
 }
 
 //*****************************************************************************
@@ -434,6 +452,12 @@ static void launch_pkt_sniffer()
     {
         ESP_LOGE(TAG, "Called launch_pkt_sniffer without setting an active MAC AP target");
         return;
+    }
+
+    if(client_aid)
+    {
+        ESP_LOGI(TAG, "In launch_pkt_sniffer - deauthing client");
+        deauth_client();
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(1));
@@ -913,7 +937,52 @@ static void ui_scan_mac_ini(void)
 
 void init_wifi(void)
 {
-    _init_wifi();
+        // ESP NET IF init
+    esp_netif_t *sta_netif = NULL;
+    esp_netif_t *ap_netif = NULL;
+    ESP_ERROR_CHECK(esp_netif_init());
+    sta_netif = esp_netif_create_default_wifi_sta();
+    ap_netif = esp_netif_create_default_wifi_ap();
+    assert(ap_netif);
+    assert(sta_netif);
+    
+    // Wifi early init config (RX/TX buffers etc)
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Handle dem wifi events on the default event loop
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler,
+                                                        NULL,
+                                                        NULL));
+
+    wifi_config_t wifi_config = {
+        .ap = {
+            .ssid = EXAMPLE_ESP_WIFI_SSID,
+            .ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID),
+            .channel = EXAMPLE_ESP_WIFI_CHANNEL,
+            .password = EXAMPLE_ESP_WIFI_PASS,
+            .max_connection = EXAMPLE_MAX_STA_CONN,
+            .authmode = WIFI_AUTH_WPA2_PSK,
+            .pmf_cfg = {
+                    .required = true,
+            },
+        },
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    uint8_t mac[6];
+    ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
+    ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+
+    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
+    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
     active_mac_list_lock = xSemaphoreCreateBinary();
     eapol_lock = xSemaphoreCreateBinary();
 
