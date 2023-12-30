@@ -1,6 +1,6 @@
 # ESP 32 Deluminator
 
-Welcome to the ESP 32 Deluminator project. We have 3 very specific goals in mind as it relates to this project.
+Welcome to the ESP 32 Deluminator project. The name is a reference Dumbledor's light snatching deluminator from the harry potter series. We have 3 very specific goals in mind as it relates to this project.
 
 * (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs.
 * (1) Explore the wifi 802.11 protocol and internal workings of this medium
@@ -14,8 +14,8 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 # HW / SW Requiements
 
-* Set up the esp-idf build env as we describe [here]https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up
-    * This page also describes how to set up JTAG debugging with a Raspberry Pi 4 model B. This is recommended as it give one intruction level stepping.
+* Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
+    * This page also describes how to set up JTAG debugging with a Raspberry Pi 4 model B. This is recommended if one does any ESP 32 development as it gives one intruction level stepping with a 45 dollar Raspberri PI.
 * ESP32 Wroom Dev Kit
 * LCD 2004 w/ i2c backpack
 * Rotary encoder
