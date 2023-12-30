@@ -74,15 +74,85 @@ static esp_timer_create_args_t gp_timer_args =
 };
 static uint8_t gp_timer_running = 0;
 
+//*****************************************************************************
 // We maintain an access point that we call the SoC AP to differentiate it
 // from our ap list above that we get scanning. We only allow one station to
-// connect at a time. Client aid of -1 indicates noone is  connected.
+// connect at a time. Client aid of -1 indicates noone is connected.
+//
+// SoC AP Funcs - The SoC AP we host has a handler pegged to the default event
+// loop. When a station connects, this starts the state machine:
+//
+// |-------------|    |----------------------------|    |---------------------|
+// | STA Connect |--->| Launch Client Handler Task |--->| Open Listening Port |
+// |-------------|    |----------------------------|    |---------------------|
+//                                                              |
+//                                                              |
+//                                                              |
+//                                                              V
+// |-----------------|    |----------------------|    |---------------------|
+// | Fufil File Reqs |<---| Present Stored Files |<---|    Accept Conn      |
+// |-----------------|    |----------------------|    |---------------------|
+//          |                          ^                         ^ 
+//          |                          |                         |
+//          |---------------------------                         |
+//          V                                                    |
+// |--------------------------|                                  |
+// | Handle Client Disconnect |----------------------------------- 
+// |--------------------------|
+//
+//
+// Failures) If anything happens in the first row i.e. we cant launch the conn 
+//           handler or can't open the listening port, this indicates very bad 
+//           system / config failures beyond our control. Assert it to be
+//           successful and log n crash in failure.
+//
+//           Once the Listening port is opened, failures can be handled by the
+//           catch all of "handle client disconnect" that frees up any client
+//           resources and returns to the listening state.
+//
+//           A STA disconnect event will not interrupt the starting of the
+//           client handler task or the starting of the listening port. Once
+//           the listening port is open, a client disconnect will trigger a
+//           graceful shutdown of the client handle thread and the listening
+//           port.
+//*****************************************************************************
+
+enum client_state
+{
+    CLIENT_STA_NOT_CONN,
+    CLIENT_STA_CONN,
+    CLIENT_WAITING_ON_TCP_CONN
+    CLIENT_TCP_CONN,
+    CLIENT_IN_SESSION_LOOP
+}
+
 static uint8_t client_mac[MAC_LEN];
 static int8_t  client_aid = -1;
 
-//*****************************************************************************
-// SoC AP Funcs
-//*****************************************************************************
+static void fufill_file_req(){}
+
+static void handle_file_req(){}
+
+static void present_files(){}
+
+// Called when a client is accepted. Has the main present, req, fufill loop
+static void client_session()
+{
+    while(connected)
+    {
+        present_files();
+        handle_file_req();
+        fufill_file_req();
+    }
+
+    // Handle Disconnect, clean up resources
+}
+
+// Task Func
+static void client_handler_task(void* args){}
+
+static void launch_client_handler_task(void){}
+
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
