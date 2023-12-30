@@ -9,6 +9,7 @@
 #include <esp_log.h>
 #include "user_interface.h"
 #include "lcd.h"
+#include "conf.h"
 
 // LCD module defines
 #define LCD_LINEONE             0x00        // start of line 1
@@ -45,7 +46,6 @@
 // P7 -> D7
 
 static const char* TAG = "LCD";
-static user_interface_conf_t conf;
 static SemaphoreHandle_t lock = NULL;
 
 static void LCD_pulseEnable(uint8_t data);
@@ -63,7 +63,7 @@ static void LCD_writeNibble(uint8_t nibble, uint8_t mode)
     uint8_t data = (nibble & 0xF0) | mode | LCD_BACKLIGHT;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (conf.lcd_addr << 1) | I2C_MASTER_WRITE, 1));
+    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_ADDR << 1) | I2C_MASTER_WRITE, 1));
     ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data, 1));
     ESP_ERROR_CHECK(i2c_master_stop(cmd));
     ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
@@ -82,7 +82,7 @@ static void LCD_pulseEnable(uint8_t data)
 {
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (conf.lcd_addr << 1) | I2C_MASTER_WRITE, 1));
+    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_ADDR << 1) | I2C_MASTER_WRITE, 1));
     ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data | LCD_ENABLE, 1));
     ESP_ERROR_CHECK(i2c_master_stop(cmd));
     ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
@@ -91,7 +91,7 @@ static void LCD_pulseEnable(uint8_t data)
 
     cmd = i2c_cmd_link_create();
     ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (conf.lcd_addr << 1) | I2C_MASTER_WRITE, 1));
+    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_ADDR << 1) | I2C_MASTER_WRITE, 1));
     ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (data & ~LCD_ENABLE), 1));
     ESP_ERROR_CHECK(i2c_master_stop(cmd));
     ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
@@ -103,11 +103,11 @@ static esp_err_t I2C_init(void)
 {
     i2c_config_t i2c_conf = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = conf.lcd_sda_pin,
-        .scl_io_num = conf.lcd_scl_pin,
+        .sda_io_num = SDA_PIN,
+        .scl_io_num = SCL_PIN,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = conf.i2c_clk_speed
+        .master.clk_speed = I2C_CLK_SPEED
     };
 	i2c_param_config(I2C_NUM_0, &i2c_conf);
 	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
@@ -115,7 +115,7 @@ static esp_err_t I2C_init(void)
     return ESP_OK;
 }
 
-static void LCD_init()
+static void LCD_init(void)
 {
     I2C_init();
     vTaskDelay(100 / portTICK_PERIOD_MS);                                 // Initial 40 mSec delay
@@ -152,9 +152,9 @@ static void LCD_init()
 void LCD_setCursor(uint8_t col, uint8_t row)
 {
     assert(xSemaphoreTake(lock, portMAX_DELAY));
-    if (row > conf.lcd_num_row - 1) {
-        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, conf.lcd_num_row-1);
-        row = conf.lcd_num_row - 1;
+    if (row > LCD_ROWS - 1) {
+        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, LCD_ROWS-1);
+        row = LCD_ROWS - 1;
     }
     uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
     LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND);
@@ -195,13 +195,12 @@ void LCD_clearScreen(void)
     assert(xSemaphoreGive(lock));
 }
 
-void init_lcd(user_interface_conf_t* _conf)
+void init_lcd()
 {
-    memcpy(&conf, _conf, sizeof(user_interface_conf_t));
     lock = xSemaphoreCreateBinary();
     assert(lock);
     assert(xSemaphoreGive(lock));
-    LCD_init(conf.lcd_addr, conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_num_row, conf.lcd_num_col);
-    ESP_LOGI(TAG, "%d by %d I2C LCD inited", conf.lcd_num_row, conf.lcd_num_col);
-    ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", conf.lcd_sda_pin, conf.lcd_scl_pin, conf.lcd_addr);
+    LCD_init();
+    ESP_LOGI(TAG, "%d by %d I2C LCD inited", LCD_ROWS, LCD_COLS);
+    ESP_LOGI(TAG, "SDA=%d   SCL=%d   ADDR=%x", SDA_PIN, SCL_PIN, LCD_ADDR);
 }

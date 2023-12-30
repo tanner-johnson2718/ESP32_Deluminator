@@ -34,6 +34,8 @@
 #define I2C_CLK_SPEED 50000
 #define MAX_NUM_UI_CMDS 32
 #define MAX_UI_LOG_LINES 128
+#define UI_EVENT_Q_SIZE 32
+#define UI_EVENT_HANDLER_PRIO 10
 
 //*****************************************************************************
 // Wifi Conf

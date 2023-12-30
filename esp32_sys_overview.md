@@ -11,8 +11,6 @@ Welcome to ESP 32 Deluminator system design and overview. The goal of this docum
 | [Flash Memory](./esp32_sys_overview.md#flash-memory) |
 | [Appendix](./esp32_sys_overview.md#system-boot-up) |
 
-
-
 # REPL
 
 * [Implementation](./esp32_build/main/repl.c)
@@ -20,8 +18,44 @@ Welcome to ESP 32 Deluminator system design and overview. The goal of this docum
 * Based on esp-idf example `system/console/basic/example` and uses the `esp_console` console API
 * The header file shows one how to use it but its pretty straight forward
 * With this module we get a interactive console to run any commands we register
-* Also, this gives us a debug log
-* Use `ESP32_LOGI` and `ESP32_LOGE` to log events over the console
+* Also, this gives us a debug log - Use `ESP32_LOGI` and `ESP32_LOGE` to log events over the console
+
+
+# User Interface
+
+* [Implementation](./esp32_build/main/user_interface.c)
+* [Header with an high level explanation](./esp32_build/main/user_interface.h)
+
+## I2C Library for LCD 2004 w/ PCF8547T IO Expander
+
+* https://github.com/maxsydney/ESP32-HD44780
+* Take c and header file from this and add the c file to the CMakeLists.txt SRC list
+* set master clock to 500000
+* Use the following Pinout
+* LCD ADDR of 0x27
+
+## Encoder Library
+
+* https://github.com/UncleRus/esp-idf-lib/tree/master/components/encoder
+* Took implementation from above and used as is.
+* Uses a timer to poll the button and rotary state
+* Take in an event Q and publishes events
+
+# Wifi
+
+The wifi module inits to two [net_if interfaces](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_netif.html). One for a station and one for an AP. This allows to be both a host and client. We init the [wifi interface](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_wifi.html) in dual STA / AP mode. Our module contains several internal data structures.
+
+* A list of wifi access points with both UI and REPL commands to update
+* A "General Purpose" timer that can be started and pointed to by the UI or REPL commands to post logging data to their repective mediums
+* A notion of "targeting" an AP
+* When an AP is targeted we can launch the packet sniffer that:
+    * Logs MACs seen in the active MAC data structure
+    * Logs Strengths of packets seen
+    * Logs in-RAM any WPA2 handshake it sees
+* When the active MAC is cleared the in-RAM WPA2 handshake packets are dumped to disk
+    * This a raw binary dump where the first 8 bytes are the sizes of the EAPOL packets (2 byte sizes)
+    * The remainder is a binary dump of packet, appended to the buffer with no padding.
+* Finally we export both UI and REPL commands for interacting with these data structures and processes in a logial way
 
 # Flash Memory
 
@@ -42,6 +76,7 @@ Welcome to ESP 32 Deluminator system design and overview. The goal of this docum
 | --- | --- |
 | `history.txt` | List of command history entered into the REPL |
 | `event.txt` | Debug info for default event loop. Must run user defined cmd `dump_event_log` to update |
+| `ssid_name.pkt` | Packet dump saves from the packet sniffer. Stores raw eapol packets | 
 
 ## Layout
 
@@ -62,6 +97,7 @@ Welcome to ESP 32 Deluminator system design and overview. The goal of this docum
 ## NVS
 
 * Basically just allows one to store key-value pairs in a dedicated namespace
+* We only initialize it to be used by the esp wifi code
 * Usage is as follows:
 
 ```C
@@ -101,30 +137,83 @@ fclose(f);
 
 * [SPIFFS API ref](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/spiffs.html)
 
-# User Interface
+# Appendix
+## System Boot Up
 
-* [Implementation](./esp32_build/main/user_interface.c)
-* [Header with an high level explanation](./esp32_build/main/user_interface.h)
+* Bootstage 1
+    * Reset vector code located in ROM and is unchangable
+    * Based on type of reset certain registers dictate boot flow
+    * In the usual case the 2nd stage boot loader is called from addr `0x1000`
+    * Reads the Boot Loader header and loads 3 memory regions associated with the 2nd stage boot loader:
+    * The passes control over to the loaded 2nd stage bootloader with entry at `0x4008_0688`
 
-| ESP Pin | LCD / ROT Pin | Func |
-| --- | --- | --- |
-| 26 | SCL | SCL |
-| 25 | SDA | SDA |
-| Vin | LCD+ | Vin |
-| GND | LCD- | GND |
-| 33 | Rot Switch | Button Pin |
-| GND | Rot Switch | Button Pin GND |
-| 32 | Rot A Term | - |
-| 27 | Rot B Term | - |
-| GND | Rot Middle term | - |
+| Seg | Addr | Len | Target | Comment | 
+| --- | --- | --- | --- | --- |
+| .dram0.bss, .dram0.data, .dram0.rodata | `0x3FFF_0000` | `0x27FC` | Internal SRAM 1 | .dram0.bss is `0x30` in len and this seg is actually loaded at `0x3FFF_0030` |
+| .iram_loader.text | `0x4007_8000` | `0x421B` | Internal SRAM 0 | - |
+| .iram.text .iram.text | `0x4008_0400` | `0x10A1`| Internal SRAM 0 | - |
 
-## I2C Library for LCD 2004 w/ PCF8547T IO Expander
+* Boot Stage 2
+    * Maps First `0x1_0000` of flash to `0x3F40_0000`, mapping the partition table to `0x3F40_9000`
+        * This makes sense why reading the virt addrs on the jtag only allowed us read the first `0x1_0000` bytes
+    * Loads in the app image in accorance with the partition table and maps the following segments shown below
+    * Remaps first `0x1_0000` bytes at addr `0x2_000` (the app) of flash to `0x3F40_0000`.
+        * This maps over the part table mapping
+        * Only maps `0x1_000` bytes to map the ro_data from the app image into the address space
+    * Maps `0x4_0000` bytes starting at flash offset `0x3_0000` (this is `0x1_0000` bytes offset into the app.bin image) to vaddr `0x400D_0000`.
+        * This mapping happens twice and both times we get a log message like this: `0x400d0020: _stext at ??:?`
+        * Would need to look closer but my hypothesis is this is from the APP CPU, which in reset until app code starts, is getting pointed to this addr and this is where the messsage comes from
+    * Finally it verifys the app image and uses the load addr contained in it to start the PRO CPU at address `0x4008_16DC` which is the function `call_start_cpu0`
 
-* https://github.com/maxsydney/ESP32-HD44780
-* Take c and header file from this and add the c file to the CMakeLists.txt SRC list
-* set master clock to 500000
-* Use the following Pinout
-* LCD ADDR of 0x27
+| Seg | Addr | Len | Target | Comment |
+| --- | --- | --- | --- | --- |
+| .flash.appdesc .flash.rodata | `0x3f400020` | `0x0e710` | External Flash | - |
+| .rtc.dummy .rtc.force_fast | `0x3ff80000` | `0x00068` | RTC Fast Memory | - |
+| .dram0.data .noinit .dram0.bss | `0x3ffb0000` | `0x02c08` | Internal SRAM 2 | - |
+| .iram0.vectors .iram0.text .iram0.text_end  | `0x40080000` | `0x0ecac` | Internal SRAM 0 | Appears to cache important systems functions that probably are called from interrupt contexts. Can cat and grep the symbol table looking for entiers in section ` 9 ` which is the iram.text section |
+| .rtc.text | `0x400c0000` | `0x00063` | RTC Fast Memory | - |
+| .flash.text | `0x400d0020` | `0x31757` | External Flash | - |
+| .rtc_slow_reserved | `0x50001fe8` | `0x00018` | RTC Slow | - |
+
+* Application start up
+    * Application code starts `call_start_cpu0` which is located at `esp-idf/components/esp_system/port/cpu_start.c`
+        * This appears to do alot of early hardware init
+        * This also starts the other core
+        * Both cores end their init with the `SYS_STARTUP_FN` macro
+    * Since we are in app code we can use gdb to peer into this start up code
+        * todo this don't use the `idf.py gdb` call as it auto inserts a break point at app_main and continues after reset
+        * Instead use the provided [gdb script](./gdb_start.sh)
+    * cpu0 enters `start_cpu0()` in `startup.c`
+        * cpu0 calls `do_core_init()` in `startup.c`
+            * cpu0 calls `heap_caps_init()` in `heap/heap_caps_init.c`
+                * heap init uses the `heap_memory_layout.h` API and global structs to find all the RAM regions such that it is not used by static data, used by ROM code, or reserved by a component using the `SOC_RESERVE_MEMORY_REGION()` macro.
+                * It then condenses these memory regions down, each regions and allocates heaps metadat for that heap in that region.
+            * `do_core_init` then does all sorts of init tasks: timers, secure boot verification, etc, etc.
+        * cpu0 then calls `do_global_ctors` which allows functions added to the init array at build time to be ran. See [here](https://github.com/tanner-johnson2718/MEME_OS_3/tree/main/Loading) for details on init functions and their linking.
+        * Finally it secondary init which passes control over to other cores so if they have init todo they may
+    * cpu0 calls `esp_startup_start_app`
+        * starts dameon tasks
+        * starts "main task" pinned to cpu0
+            * calls our app main
+        * starts scheduler `vTaskStartScheduler();`
+    * cpu1 started ite init late in cpu0's init.
+    * cpu1 calls `esp_startup_start_app_other_cores`
+        * starts dameon tasks
+        * waits for scheduler on cpu0 to be finished
+        * starts scheduler `xPortStartScheduler();`
+
+[Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
+
+## Tasks / FreeRTOS
+
+* Create
+* Delete
+* Delay
+* Semaphore
+* Tasks list on our system
+
+* [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
+* [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)
 
 ## Event Loop API
 
@@ -213,97 +302,3 @@ gpio_isr_handler_add(BUTTON_PIN, gpio_isr_handler, NULL);
 gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 xTaskCreate(event_q_poller, "event_q_poller", 2048, NULL, EVENT_QUEUE_PRIO, NULL);
 ```
-
-# System Boot Up
-
-* Bootstage 1
-    * Reset vector code located in ROM and is unchangable
-    * Based on type of reset certain registers dictate boot flow
-    * In the usual case the 2nd stage boot loader is called from addr `0x1000`
-    * Reads the Boot Loader header and loads 3 memory regions associated with the 2nd stage boot loader:
-    * The passes control over to the loaded 2nd stage bootloader with entry at `0x4008_0688`
-
-| Seg | Addr | Len | Target | Comment | 
-| --- | --- | --- | --- | --- |
-| .dram0.bss, .dram0.data, .dram0.rodata | `0x3FFF_0000` | `0x27FC` | Internal SRAM 1 | .dram0.bss is `0x30` in len and this seg is actually loaded at `0x3FFF_0030` |
-| .iram_loader.text | `0x4007_8000` | `0x421B` | Internal SRAM 0 | - |
-| .iram.text .iram.text | `0x4008_0400` | `0x10A1`| Internal SRAM 0 | - |
-
-* Boot Stage 2
-    * Maps First `0x1_0000` of flash to `0x3F40_0000`, mapping the partition table to `0x3F40_9000`
-        * This makes sense why reading the virt addrs on the jtag only allowed us read the first `0x1_0000` bytes
-    * Loads in the app image in accorance with the partition table and maps the following segments shown below
-    * Remaps first `0x1_0000` bytes at addr `0x2_000` (the app) of flash to `0x3F40_0000`.
-        * This maps over the part table mapping
-        * Only maps `0x1_000` bytes to map the ro_data from the app image into the address space
-    * Maps `0x4_0000` bytes starting at flash offset `0x3_0000` (this is `0x1_0000` bytes offset into the app.bin image) to vaddr `0x400D_0000`.
-        * This mapping happens twice and both times we get a log message like this: `0x400d0020: _stext at ??:?`
-        * Would need to look closer but my hypothesis is this is from the APP CPU, which in reset until app code starts, is getting pointed to this addr and this is where the messsage comes from
-    * Finally it verifys the app image and uses the load addr contained in it to start the PRO CPU at address `0x4008_16DC` which is the function `call_start_cpu0`
-
-| Seg | Addr | Len | Target | Comment |
-| --- | --- | --- | --- | --- |
-| .flash.appdesc .flash.rodata | `0x3f400020` | `0x0e710` | External Flash | - |
-| .rtc.dummy .rtc.force_fast | `0x3ff80000` | `0x00068` | RTC Fast Memory | - |
-| .dram0.data .noinit .dram0.bss | `0x3ffb0000` | `0x02c08` | Internal SRAM 2 | - |
-| .iram0.vectors .iram0.text .iram0.text_end  | `0x40080000` | `0x0ecac` | Internal SRAM 0 | Appears to cache important systems functions that probably are called from interrupt contexts. Can cat and grep the symbol table looking for entiers in section ` 9 ` which is the iram.text section |
-| .rtc.text | `0x400c0000` | `0x00063` | RTC Fast Memory | - |
-| .flash.text | `0x400d0020` | `0x31757` | External Flash | - |
-| .rtc_slow_reserved | `0x50001fe8` | `0x00018` | RTC Slow | - |
-
-* Application start up
-    * Application code starts `call_start_cpu0` which is located at `esp-idf/components/esp_system/port/cpu_start.c`
-        * This appears to do alot of early hardware init
-        * This also starts the other core
-        * Both cores end their init with the `SYS_STARTUP_FN` macro
-    * Since we are in app code we can use gdb to peer into this start up code
-        * todo this don't use the `idf.py gdb` call as it auto inserts a break point at app_main and continues after reset
-        * Instead use the provided [gdb script](./gdb_start.sh)
-    * cpu0 enters `start_cpu0()` in `startup.c`
-        * cpu0 calls `do_core_init()` in `startup.c`
-            * cpu0 calls `heap_caps_init()` in `heap/heap_caps_init.c`
-                * heap init uses the `heap_memory_layout.h` API and global structs to find all the RAM regions such that it is not used by static data, used by ROM code, or reserved by a component using the `SOC_RESERVE_MEMORY_REGION()` macro.
-                * It then condenses these memory regions down, each regions and allocates heaps metadat for that heap in that region.
-            * `do_core_init` then does all sorts of init tasks: timers, secure boot verification, etc, etc.
-        * cpu0 then calls `do_global_ctors` which allows functions added to the init array at build time to be ran. See [here](https://github.com/tanner-johnson2718/MEME_OS_3/tree/main/Loading) for details on init functions and their linking.
-        * Finally it secondary init which passes control over to other cores so if they have init todo they may
-    * cpu0 calls `esp_startup_start_app`
-        * starts dameon tasks
-        * starts "main task" pinned to cpu0
-            * calls our app main
-        * starts scheduler `vTaskStartScheduler();`
-    * cpu1 started ite init late in cpu0's init.
-    * cpu1 calls `esp_startup_start_app_other_cores`
-        * starts dameon tasks
-        * waits for scheduler on cpu0 to be finished
-        * starts scheduler `xPortStartScheduler();`
-
-[Start Up Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/startup.html)
-
-# Wifi
-
-* init code
-    * net if x2
-    * default settings, etc
-* AP scanning
-    * internal data structures, API, and config
-* STA Scanning
-    * internal data structures, API and config
-* REPL Commands
-* UI Program
-* 
-
-* wifi api link
-* netif api link
-* ESP timer api link
-
-# Tasks / FreeRTOS
-
-* Create
-* Delete
-* Delay
-* Semaphore
-* Tasks list on our system
-
-* [FreeRTOS API Reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos.html)
-* [Vanilla RTOS Ref](https://www.freertos.org/RTOS.html)

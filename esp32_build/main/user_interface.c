@@ -11,13 +11,11 @@
 #include "user_interface.h"
 #include "lcd.h"
 #include "encoder.h"
+#include "conf.h"
 
-#define UI_EVENT_Q_SIZE 32
-#define UI_EVENT_HANDLER_PRIO 10
 static const char* TAG = "UI";
 static QueueHandle_t ui_event_q;
 static rotary_encoder_t re = {0};
-static user_interface_conf_t conf;
 
 static char* cmd_list;
 static command_cb_t* init_cb_list;
@@ -54,23 +52,23 @@ static void ui_event_handler(void* arg)
                 ESP_LOGI(TAG, "Button released");
                 break;
             case RE_ET_BTN_CLICKED:
-                button_short_press();
                 ESP_LOGI(TAG, "Button clicked");
+                button_short_press();
                 break;
             case RE_ET_BTN_LONG_PRESSED:
-                button_long_press();
                 ESP_LOGI(TAG, "Looooong pressed button");
+                button_long_press();
                 break;
             case RE_ET_CHANGED:
                 if(e.diff > 0)
                 {
-                    rot_right();
                     ESP_LOGI(TAG, "Rot Right");
+                    rot_right();
                 }
                 else
                 {
-                    rot_left();
                     ESP_LOGI(TAG, "Rot Left");
+                    rot_left();
                 }
                 break;
             default:
@@ -150,7 +148,7 @@ static void rot_left(void)
         return;
     }
     
-    if(cursor_pos_on_screen > 0 && cursor_pos_on_screen < conf.lcd_num_row)
+    if(cursor_pos_on_screen > 0 && cursor_pos_on_screen < LCD_ROWS)
     {
         // no need to update whats on screen just move cursor
         cursor_pos_on_screen--;
@@ -170,22 +168,22 @@ static void rot_right(void)
 
     uint8_t max = 0;
     if(in_menu){ max = num_cmds; }
-    else       { max = conf.max_log_lines; }
+    else       { max = MAX_UI_LOG_LINES; }
 
     // right = down
-    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) == (max-1)) )
+    if((cursor_pos_on_screen == (LCD_ROWS-1)) && ((index_of_first_line + LCD_ROWS) == (max-1)) )
     {
         return;
     }
 
-    if((cursor_pos_on_screen == (conf.lcd_num_row-1)) && ((index_of_first_line + conf.lcd_num_row) < (max-1)))
+    if((cursor_pos_on_screen == (LCD_ROWS-1)) && ((index_of_first_line + LCD_ROWS) < (max-1)))
     {
         ++index_of_first_line;
         update_display();
         return;
     }
 
-    if((cursor_pos_on_screen < (conf.lcd_num_row-1)))
+    if((cursor_pos_on_screen < (LCD_ROWS-1)))
     {
         if(index_of_first_line + cursor_pos_on_screen == max - 1)
         {
@@ -206,7 +204,7 @@ static char* get_cmd_str(uint8_t n)
 {
     if(n < num_cmds)
     {
-        return &cmd_list[n*conf.lcd_num_col];
+        return &cmd_list[n*LCD_COLS];
     }
 
     ESP_LOGE(TAG, "ERROR, tried to access cmd str that dont exist");
@@ -241,28 +239,27 @@ static int do_long_press(int argc, char** argv)
 // PUBLIC API
 //*****************************************************************************
 
-void init_user_interface(user_interface_conf_t* _conf)
-{
-    memcpy(&conf, _conf, sizeof(user_interface_conf_t));    
+void init_user_interface()
+{    
     
     ui_event_q = xQueueCreate(UI_EVENT_Q_SIZE, sizeof(rotary_encoder_event_t));
     xTaskCreate(ui_event_handler, "ui event handler", 4096, NULL, UI_EVENT_HANDLER_PRIO, NULL);
     assert(ui_event_q);
     ESP_LOGI(TAG, "UI Event Handler Launched");
 
-    re.pin_a = conf.rot_a_pin;
-    re.pin_b = conf.rot_b_pin;
-    re.pin_btn = conf.button_pin;
+    re.pin_a = ROT_A_PIN;
+    re.pin_b = ROT_B_PIN;
+    re.pin_btn = BUTTON_PIN;
     ESP_ERROR_CHECK(rotary_encoder_init(ui_event_q));
     ESP_ERROR_CHECK(rotary_encoder_add(&re));
     
-    init_lcd(_conf);
+    init_lcd();
 
-    cmd_list = malloc(conf.max_num_cmds * conf.lcd_num_col);
-    current_log = malloc(conf.max_log_lines * conf.lcd_num_col);
-    init_cb_list = malloc(conf.max_num_cmds * sizeof(command_cb_t));
-    on_press_cb_list = malloc(conf.max_num_cmds * sizeof(on_press_cb_t));
-    fini_cb_list = malloc(conf.max_num_cmds * sizeof(command_cb_t));
+    cmd_list = malloc(MAX_NUM_UI_CMDS * LCD_COLS);
+    current_log = malloc(MAX_UI_LOG_LINES * LCD_COLS);
+    init_cb_list = malloc(MAX_NUM_UI_CMDS * sizeof(command_cb_t));
+    on_press_cb_list = malloc(MAX_NUM_UI_CMDS * sizeof(on_press_cb_t));
+    fini_cb_list = malloc(MAX_NUM_UI_CMDS * sizeof(command_cb_t));
 
     assert(cmd_list);
     assert(current_log);
@@ -270,8 +267,8 @@ void init_user_interface(user_interface_conf_t* _conf)
     assert(on_press_cb_list);
     assert(fini_cb_list);
 
-    memset(cmd_list, 0, conf.max_num_cmds * conf.lcd_num_col);
-    memset(current_log, 0, conf.max_log_lines * conf.lcd_num_col);
+    memset(cmd_list, 0, MAX_NUM_UI_CMDS * LCD_COLS);
+    memset(current_log, 0, MAX_UI_LOG_LINES * LCD_COLS);
 }
 
 void register_user_interface(void)
@@ -285,20 +282,20 @@ void register_user_interface(void)
 void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini)
 {
     // Check len of name if its more than 19 char kick that shit back
-    if(strnlen(name, conf.lcd_num_col - 1) > conf.lcd_num_col - 1)
+    if(strnlen(name, LCD_COLS - 1) > LCD_COLS - 1)
     {
         ESP_LOGE(TAG, "UI add of cmd %s failed, too long", name);
         return;
     }
 
     // Check to see if we are registering too many cmds
-    if(num_cmds == conf.max_num_cmds)
+    if(num_cmds == MAX_NUM_UI_CMDS)
     {
         ESP_LOGE(TAG, "UI add of cmd %s failed, too many cmds", name);
         return;
     }
 
-    strcpy(cmd_list + (num_cmds * conf.lcd_num_col), name);
+    strcpy(cmd_list + (num_cmds * LCD_COLS), name);
     init_cb_list[num_cmds] = cmd_init;
     on_press_cb_list[num_cmds] = on_press_cb;
     fini_cb_list[num_cmds] = cmd_fini;
@@ -317,29 +314,29 @@ void start_ui(void)
 
 void push_to_line_buffer(uint8_t line_num, char* line)
 {
-    if(line_num >= conf.max_log_lines)
+    if(line_num >= MAX_UI_LOG_LINES)
     {
         ESP_LOGE(TAG, "Tried to put line outside of line buffer range");
         return;
     }
 
-    if(strnlen(line, conf.lcd_num_col - 1) > conf.lcd_num_col - 1)
+    if(strnlen(line, LCD_COLS - 1) > LCD_COLS - 1)
     {
         ESP_LOGE(TAG, "Log line %s too long", line);
         return;
     }
 
-    strncpy(current_log + (line_num*conf.lcd_num_col), line, conf.lcd_num_col - 1);
+    strncpy(current_log + (line_num*LCD_COLS), line, LCD_COLS - 1);
 }
 
 char* get_from_line_buffer(uint8_t line_num)
 {
-    if(line_num >= conf.max_log_lines)
+    if(line_num >= MAX_UI_LOG_LINES)
     {
         ESP_LOGE(TAG, "Tried to get line outside of line buffer range");
         return NULL;
     }
-    return current_log + (line_num*conf.lcd_num_col);
+    return current_log + (line_num*LCD_COLS);
 }
 
 void home_screen_pos(void)
@@ -381,13 +378,13 @@ void update_display(void)
 
     uint8_t max = 0;
     if(in_menu){ max = num_cmds; }
-    else { max = conf.max_log_lines; }
+    else { max = MAX_UI_LOG_LINES; }
 
     // display cmds, all are gareneteed to fit on screen
     uint8_t i = index_of_first_line;
     uint8_t row = 0;
     
-    for(; i < index_of_first_line + conf.lcd_num_row; ++i)
+    for(; i < index_of_first_line + LCD_ROWS; ++i)
     {
         _update_line(row, i, max);
         ++row;
@@ -402,7 +399,7 @@ void update_line(uint8_t i)
         return;
     }
 
-    if(i >= conf.max_log_lines)
+    if(i >= MAX_UI_LOG_LINES)
     {
         ESP_LOGE(TAG, "Called update line with out of bounds index");
         return;
@@ -414,7 +411,7 @@ void update_line(uint8_t i)
         return;
     }
 
-    _update_line(i - index_of_first_line, i, conf.max_log_lines);
+    _update_line(i - index_of_first_line, i, MAX_UI_LOG_LINES);
 }
 
 void lock_cursor(void)

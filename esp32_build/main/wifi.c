@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
@@ -58,6 +59,7 @@ static SemaphoreHandle_t active_mac_list_lock;
 #define EAPOl_SEMA_TIMEOUT_MS 10
 static uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
 static uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
+static uint8_t eapol_pkts_captured = 0;
 static SemaphoreHandle_t eapol_lock;
 
 // We maintain a single timer to be used as a "poll n dump" function ie ever
@@ -259,6 +261,46 @@ static inline void insert_mac(uint8_t* m1, int8_t rssi)
 
 }
 
+static void eapol_dump_to_disk(void)
+{
+    char path[MAX_SSID_LEN+1];
+
+    snprintf(path, MAX_SSID_LEN+1, "%s/%.15s.pkt", MOUNT_PATH, ap_info[active_mac_target_ap].ssid);
+    
+    ESP_LOGI(TAG, "Opening %s to writeout eapol pkts", path);
+    FILE* f = fopen(path, "w");
+    if(!f)
+    {
+        ESP_LOGE(TAG, "Failed to open %s - %s", path, strerror(errno));
+        fclose(f);
+        return;
+    }
+
+    size_t num_written = fwrite(eapol_pkt_lens, 1, 2*EAPOL_NUM_PKTS, f);
+    if(num_written != 2 * EAPOL_NUM_PKTS)
+    {
+        ESP_LOGE(TAG, "Failed to write EAPOL Header (%d / %d)", num_written, 2*EAPOL_NUM_PKTS);
+        fclose(f);
+        return;
+    }
+
+    uint8_t i;
+    for(i = 0; i < EAPOL_NUM_PKTS; ++i)
+    {
+        num_written = fwrite(eapol_buffer, 1, eapol_pkt_lens[i], f);
+        if(num_written != eapol_pkt_lens[i])
+        {
+            ESP_LOGE(TAG, "Failed to write EAPOL %d Pkt (%d / %d)", i, num_written, eapol_pkt_lens[i]);
+            fclose(f);
+            return;
+        }
+    }
+    
+    fclose(f);
+    ESP_LOGI(TAG, "Write out of EAPOL pkts successful!");
+
+}
+
 static void clear_active_mac_list(void)
 {
     if(!xSemaphoreTake(active_mac_list_lock, 0))
@@ -267,10 +309,20 @@ static void clear_active_mac_list(void)
         return;
     }
 
+    
+    if(eapol_pkts_captured == EAPOL_NUM_PKTS)
+    {
+        eapol_dump_to_disk();
+    }
+
     active_mac_list_len = 0;
     active_mac_target_ap = -1;
+    eapol_pkts_captured = 0;
+    eapol_pkt_lens[0] = 0;
+    eapol_pkt_lens[1] = 0;
+    eapol_pkt_lens[2] = 0;
+    eapol_pkt_lens[3] = 0;
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-
     ESP_LOGI(TAG, "Active MAC List Cleared");
 }
 
@@ -352,6 +404,7 @@ static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
 
         eapol_pkt_lens[num] = len;
         memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
+        ++eapol_pkts_captured;
 
         assert(xSemaphoreGive(eapol_lock));
 

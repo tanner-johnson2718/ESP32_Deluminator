@@ -22,9 +22,6 @@
 
 #pragma once
 
-#include <stdint.h>
-
-void init_repl();
 void start_repl(void);
 void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 void register_misc_cmds(void);

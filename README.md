@@ -21,8 +21,20 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * [Battery Pack](https://www.walmart.com/ip/onn-Portable-Battery-4k-mAh-Black/934734622?wmlspartner=wlpa&selectedSellerId=0&wl13=2070&adid=22222222277934734622_117755028669_12420145346&wmlspartner=wmtlabs&wl0=&wl1=g&wl2=c&wl3=501107745824&wl4=aud-2230653093054:pla-306310554666&wl5=9033835&wl6=&wl7=&wl8=&wl9=pla&wl10=8175035&wl11=local&wl12=934734622&wl13=2070&veh=sem_LIA&gclsrc=aw.ds&&adid=22222222237934734622_117755028669_12420145346&wl0=&wl1=g&wl2=c&wl3=501107745824&wl4=aud-2230653093054:pla-306310554666&wl5=9033835&wl6=&wl7=&wl8=&wl9=pla&wl10=8175035&wl11=local&wl12=934734622&veh=sem&gad_source=1&gclid=CjwKCAiA-bmsBhAGEiwAoaQNmpeMOc645RI29sXwDRy94ucsxWZd484QlGaFLX9-s_fhE79IKZzTjxoCHxQQAvD_BwE) - We have a custom case for this pack but obviously any will do
 * Rotary encoder - We used a random one we found but should be interoperable with any
 
-# Software, Programming, and the ESP32 System
+# Software and the ESP32 System
 
 # Attacks and digging into 802.11
 
 # Wiring and 3D Printed Case
+
+| ESP Pin | LCD / ROT Pin | Func |
+| --- | --- | --- |
+| 26 | SCL | SCL |
+| 25 | SDA | SDA |
+| Vin | LCD+ | Vin |
+| GND | LCD- | GND |
+| 33 | Rot Switch | Button Pin |
+| GND | Rot Switch | Button Pin GND |
+| 32 | Rot A Term | - |
+| 27 | Rot B Term | - |
+| GND | Rot Middle term | - |

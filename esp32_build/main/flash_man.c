@@ -11,9 +11,9 @@
 #include "flash_man.h"
 #include "cmd_nvs.h"
 #include "repl.h"
+#include "conf.h"
 
 static const char* TAG = "FLASH";
-static flash_conf_t conf;
 
 //*****************************************************************************
 // PRIVATE
@@ -21,12 +21,12 @@ static flash_conf_t conf;
 
 static void initialize_filesystem(void)
 {
-    ESP_LOGI(TAG, "Initializing SPIFFS -> %s", conf.mount_path);
+    ESP_LOGI(TAG, "Initializing SPIFFS -> %s", MOUNT_PATH);
 
     esp_vfs_spiffs_conf_t _conf = {
-      .base_path = conf.mount_path,
+      .base_path = MOUNT_PATH,
       .partition_label = NULL,
-      .max_files = conf.max_file,
+      .max_files = MAX_FILES,
       .format_if_mount_failed = true
     };
 
@@ -50,7 +50,7 @@ static void initialize_filesystem(void)
         esp_spiffs_format(_conf.partition_label);
         return;
     } else {
-        ESP_LOGI(TAG, "%s mounted on partition size: total: %d, used: %d",conf.mount_path, total, used);
+        ESP_LOGI(TAG, "%s mounted on partition size: total: %d, used: %d",MOUNT_PATH, total, used);
     }
 }
 
@@ -89,8 +89,8 @@ static int do_ls(int argc, char** argv)
     DIR *d;
     struct dirent *dir;
 
-    printf("%s\n", conf.mount_path);
-    d = opendir(conf.mount_path);
+    printf("%s\n", MOUNT_PATH);
+    d = opendir(MOUNT_PATH);
     if(d)
     {
         while((dir = readdir(d))!=NULL)
@@ -158,9 +158,8 @@ static int do_dump_event_log(int argc, char** argv)
 // PUBLIC
 //*****************************************************************************
 
-void init_flash(flash_conf_t* _conf)
+void init_flash(void)
 {
-    memcpy(&conf, _conf, sizeof(flash_conf_t));
     initialize_nvs();
     initialize_filesystem();
 }
