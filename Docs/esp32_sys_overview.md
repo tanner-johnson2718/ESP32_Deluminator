@@ -7,7 +7,7 @@ Welcome to ESP 32 Deluminator system design and overview. The goal of this docum
 | --- |
 | [Serial Based REPL](./esp32_sys_overview.md#repl) |
 | [User Iterface](./esp32_sys_overview.md#user-interface) |
-| [Wifi]() |
+| [Wifi](./esp32_sys_overview.md#wifis\) |
 | [Flash Memory](./esp32_sys_overview.md#flash-memory) |
 | [Appendix](./esp32_sys_overview.md#system-boot-up) |
 

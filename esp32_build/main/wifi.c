@@ -82,29 +82,22 @@ static void _init_wifi()
     sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
 
-    if(CREATE_AP_IF)
-    {
-        ap_netif = esp_netif_create_default_wifi_ap();
-        assert(ap_netif);
-    }
+    ap_netif = esp_netif_create_default_wifi_ap();
+    assert(ap_netif);
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
     ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
                 mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
-    if(CREATE_AP_IF)
-    {
-        ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
-        ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                    mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-
-    }
+    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
+    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 }
 
 //*****************************************************************************
@@ -564,6 +557,15 @@ static int do_repl_scan_mac_stop(int argc, char** argv)
     }
 
     return 0;
+}
+
+//*****************************************************************************
+// REPL Create / Destroy AP
+//*****************************************************************************
+
+static int do_create_ap()
+{
+
 }
 
 //*****************************************************************************

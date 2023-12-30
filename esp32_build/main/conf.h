@@ -43,4 +43,3 @@
 
 #define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
-#define CREATE_AP_IF 0
