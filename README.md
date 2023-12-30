@@ -1,12 +1,12 @@
 # ESP 32 Deluminator
 
-![alt text](./res/delum.jpg)
-
 Welcome to the ESP 32 Deluminator project. We have 3 very specific goals in mind as it relates to this project.
 
 * (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs.
 * (1) Explore the wifi 802.11 protocol and internal workings of this medium
 * (2) Explore the HW and programming model of the ESP32
+
+![alt text](./res/delum.jpg)
 
 # Disclaimer
 
