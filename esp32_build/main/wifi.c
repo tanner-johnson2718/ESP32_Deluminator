@@ -29,9 +29,6 @@
 static const char* TAG = "WIFI";
 
 // Maintain a list of APs in order of RSSI
-static wifi_scan_config_t scan_conf = {0};
-static uint8_t scan_ssid[MAX_SSID_LEN + 1] = {0};
-static uint8_t scan_bssid[MAC_LEN] = {0};
 static wifi_ap_record_t ap_info[sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint16_t ap_count = 0;
 
@@ -92,16 +89,6 @@ static void _init_wifi()
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
-    scan_conf.show_hidden = SCAN_CONF_SHOW_HIDDEN;
-    scan_conf.scan_type = SCAN_CONF_SCAN_TYPE;
-    scan_conf.scan_time.passive = SCAN_CONF_PASSIVE_SCAN_TIME;
-    scan_conf.scan_time.active.min = 0;
-    scan_conf.scan_time.active.max = SCAN_CONF_ACTIVE_MAX;
-    scan_conf.ssid = NULL;
-    scan_conf.bssid = NULL;
-    scan_conf.channel = 0;
-    scan_conf.home_chan_dwell_time = 0;
-
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
     ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
@@ -154,9 +141,7 @@ static void gp_timer_stop_n_destroy(void)
 static void update_ap_info()
 {
     uint16_t max_ap_count = DEFAULT_SCAN_LIST_SIZE;
-    ESP_LOGE(TAG, "tick");
-    esp_wifi_scan_start(&scan_conf, true);
-    ESP_LOGE(TAG, "tock");
+    esp_wifi_scan_start(NULL, true);
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
     
@@ -166,13 +151,6 @@ static void update_ap_info()
     }
 
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
-}
-
-static void set_scan_all()
-{
-    scan_conf.ssid = NULL;
-    scan_conf.bssid = NULL;
-    scan_conf.channel = 0;
 }
 
 static int32_t find_ap(char* ssid)
@@ -187,23 +165,6 @@ static int32_t find_ap(char* ssid)
     }
 
     return -1;
-}
-
-static void set_ap_scan_target(uint8_t i)
-{
-    if(i >= ap_count )
-    {
-        ESP_LOGE(TAG, "in set ap scan target, index outof bounds");
-        return;
-    }
-    scan_conf.channel = ap_info[i].primary;
-    strncpy((char*)scan_ssid,(char*) ap_info[i].ssid, MAX_SSID_LEN);
-    memcpy(scan_bssid, ap_info[i].bssid, MAC_LEN);
-
-    scan_conf.ssid = scan_ssid;
-    scan_conf.bssid = scan_bssid;
-
-    ESP_LOGI(TAG, "Scan scope set to %s\n", scan_conf.ssid);
 }
 
 //*****************************************************************************
@@ -412,10 +373,6 @@ static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
 
 static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
-    if(type != WIFI_PKT_DATA)
-    {
-        return;
-    }
    
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
 
@@ -449,7 +406,7 @@ static void launch_mac_sniffer()
 
     wifi_promiscuous_filter_t filt = 
     {
-        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA
+        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_MGMT
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
@@ -517,15 +474,13 @@ void scan_ui_cmd(void)
 {
     ESP_LOGI(TAG, "SCAN ALL UI CMD");
 
+    lock_cursor();
     home_screen_pos();
     push_to_line_buffer(0, "Scanning...");
     push_to_line_buffer(1, "");
     push_to_line_buffer(2, "");
     push_to_line_buffer(3, "");
     update_display();
-    lock_cursor();
-    
-    set_scan_all();
     update_ap_info();
 
     uint8_t i;
@@ -541,110 +496,7 @@ void scan_ui_cmd(void)
 }
 
 //*****************************************************************************
-// UI SCAN RSSI CMD
-//
-// INI - On init to the same thing as the base scan UI command but only list
-//       the ssids.
-//
-// CB - When button pressed use the passed index to limit the scan scope to the
-//      indicated ap. Home the screen and lock the cursor. We then give the 
-//      semaphore and launch the polling task. If the task is already running
-//      we indicate to it to kill itself and wait for the poll task to give
-//      the semaphore back, verifying its destruction. Then do a scan as we did
-//      on ini
-//
-// FINI - Simply make sure our poll task is dead
-//*****************************************************************************
-
-static void list_ssids_lcd(void)
-{
-    uint8_t i;
-    char line_buff[20] = {0};
-    for(i = 0; i < ap_count; ++i)
-    {
-        strncpy(line_buff, (char*) ap_info[i].ssid, 19);
-        push_to_line_buffer(i, line_buff);
-        ESP_LOGI(TAG, "%s", line_buff);
-    }
-}
-
-static void scan_rssi_task()
-{
-    char line_buff[20] = {0};
-    
-    update_ap_info();
-    snprintf(line_buff,19, "RSSI=%03d", ap_info[0].rssi);
-    push_to_line_buffer(3, line_buff);
-    home_screen_pos();
-    update_line(3);
-}
-
-static void scan_rssi_fini()
-{
-    if(gp_timer_running)
-    {
-        gp_timer_stop_n_destroy();
-    }  
-}
-
-static void scan_rssi_on_press_cb(uint8_t index)
-{
-
-    if(!gp_timer_running)
-    {
-        if(index >= ap_count)
-        {
-            ESP_LOGE(TAG, "scan_rssi_cb index out of range");
-            return;
-        }
-
-        
-        set_ap_scan_target(index);
-
-        uint8_t line_counter = 0;
-        lock_cursor();
-        home_screen_pos();
-        lcd_dump_ap(index, &line_counter);
-        update_display();
-        gp_timer_create_n_start(&scan_rssi_task);
-    }
-    else
-    {
-        gp_timer_stop_n_destroy();
-
-        home_screen_pos();
-        push_to_line_buffer(0, "Scanning ...");
-        push_to_line_buffer(1, "");
-        push_to_line_buffer(2, "");
-        push_to_line_buffer(3, "");
-        update_display();
-
-        set_scan_all();
-        update_ap_info();
-        list_ssids_lcd();
-        unlock_cursor();
-    }
-
-}
-
-static void scan_rssi_ini()
-{
-    lock_cursor();
-    home_screen_pos();
-    push_to_line_buffer(0, "Scanning ...");
-    push_to_line_buffer(1, "");
-    push_to_line_buffer(2, "");
-    push_to_line_buffer(3, "");
-    update_display();
-    
-    set_scan_all();
-    update_ap_info();
-    list_ssids_lcd();
-    unlock_cursor();
-}
-
-//*****************************************************************************
-// REPL Scan Cmds
+// REPL AP Scan Cmds
 //*****************************************************************************
 
 static int do_dump_ap_info(int argc, char** argv)
@@ -655,73 +507,6 @@ static int do_dump_ap_info(int argc, char** argv)
     for(i = 0; i < ap_count; ++i)
     {
         printf("%d - SSID=%-19s   BSSID=%02x:%02x:%02x:%02x:%02x:%02x   Channel=%02d   RSSI=%03d\n", i, ap_info[i].ssid, ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5], ap_info[i].primary, ap_info[i].rssi);
-    }
-
-    return 0;
-}
-
-
-static int do_set_scan_target(int argc, char** argv)
-{
-    if(argc != 2)
-    {
-        printf("Usage: set_scan <all | ssid>");
-        return 1;
-    }
-
-    set_scan_all();
-    update_ap_info();
-
-    if(strcmp(argv[1], "all") ==  0)
-    {
-        printf("Scan scope set to all\n");
-        return 0;
-    }
-
-    int32_t i = find_ap(argv[1]);
-    if(i < 0)
-    {
-        printf("Could not find ssid = %s, scan scope remains at all\n", argv[1]);
-        return 1;
-    }
-
-    set_ap_scan_target(i);
-
-    return 0;
-}
-
-static void ap_poll_task(void* arg)
-{
-    do_dump_ap_info(0, NULL);
-}
-
-static int do_scan_poll(int argc, char** argv)
-{
-    if(argc != 2)
-    {
-        printf("Usage: scan_poll <start | stop>\n");
-        return 1;
-    }
-
-    int start = strcmp(argv[1], "start");
-    int stop = strcmp(argv[1], "stop");
-
-    if(start && stop)
-    {
-        printf("Usage: scan_poll <start | stop>\n");
-        return 1;
-    }
-
-    if(!start)
-    {
-        gp_timer_create_n_start(&ap_poll_task);
-        return 0;
-    }
-
-    if(!stop)
-    {
-        gp_timer_stop_n_destroy();
-        return 0;
     }
 
     return 0;
@@ -829,7 +614,19 @@ static void stop_report_rssi_timer(void)
 {
     gp_timer_stop_n_destroy();
     report_rssi_timer_running = 0;
-}   
+}
+
+static void list_ssids_lcd(void)
+{
+    uint8_t i;
+    char line_buff[20] = {0};
+    for(i = 0; i < ap_count; ++i)
+    {
+        strncpy(line_buff, (char*) ap_info[i].ssid, 19);
+        push_to_line_buffer(i, line_buff);
+        ESP_LOGI(TAG, "%s", line_buff);
+    }
+}
 
 static void scan_sta_ui_fini(void) 
 {
@@ -916,6 +713,12 @@ static void scan_sta_ui_cb(uint8_t index)
             push_to_line_buffer(i, line);
         }
 
+        // If less then 4 macs, clear the rest of the screen
+        for(;i<4;++i)
+        {
+            push_to_line_buffer(i, "");
+        }
+
         update_display();
         unlock_cursor();
         selecting_target_mac = 1;
@@ -988,7 +791,6 @@ static void scan_sta_ui_ini(void)
     push_to_line_buffer(2, "");
     push_to_line_buffer(3, "");
     update_display();
-    set_scan_all();
     update_ap_info();
     list_ssids_lcd();
     unlock_cursor();
@@ -1011,8 +813,6 @@ void init_wifi(void)
 void register_wifi(void)
 {
     register_no_arg_cmd("scan", "Scan for all Wifi APs", &do_dump_ap_info);
-    register_no_arg_cmd("set_scan_target", "Set scope of scan: set_scan_target <all | ssid>", &do_set_scan_target);
-    register_no_arg_cmd("scan_poll", "Poll ap scan: scan_poll <start | stop>", &do_scan_poll);
     register_no_arg_cmd("sta_scan_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_sta_scan_start);
     register_no_arg_cmd("sta_scan_stop", "Stop a scan of stations on an AP", &do_sta_scan_stop);
 }
@@ -1020,6 +820,5 @@ void register_wifi(void)
 void ui_add_wifi(void)
 {
     add_ui_cmd("scan AP all", scan_ui_cmd, scan_on_press, scan_ui_cmd_fini);
-    add_ui_cmd("scan AP rssi", scan_rssi_ini, scan_rssi_on_press_cb, scan_rssi_fini);
     add_ui_cmd("scan STA", scan_sta_ui_ini, scan_sta_ui_cb, scan_sta_ui_fini);
 }

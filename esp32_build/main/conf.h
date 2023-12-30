@@ -36,11 +36,6 @@
 //*****************************************************************************
 // Wifi Conf
 //*****************************************************************************
-#define AP_POLL_PRIO tskIDLE_PRIORITY
 #define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
 #define CREATE_AP_IF 0
-#define SCAN_CONF_SHOW_HIDDEN 1
-#define SCAN_CONF_SCAN_TYPE WIFI_SCAN_TYPE_ACTIVE
-#define SCAN_CONF_PASSIVE_SCAN_TIME 360
-#define SCAN_CONF_ACTIVE_MAX 50
