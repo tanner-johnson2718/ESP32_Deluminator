@@ -11,37 +11,69 @@
 #include "repl.h"
 #include "wifi.h"
 #include "user_interface.h"
+#include "conf.h"
+
+#define MAC_LEN 6
+#define MAX_SSID_LEN 32
+#define SEQ_NUM_LB        0x16
+#define SEQ_NUM_LB_MASK   0xF0
+#define SEQ_NUM_LB_RSHIFT 0x4
+#define SEQ_NUM_UB        0x17
+#define SEQ_NUM_UB_MASK   0xFF
+#define SEQ_NUM_UB_LSHIFT 0x8
+#define TO_DS_BYTE        0x1
+#define TO_DS_MASK        0x1
+#define FROM_DS_BYTE      0x1
+#define FROM_DS_MASK      0x2
 
 static const char* TAG = "WIFI";
 
-// AP Poller Config
-#define SCAN_CONF_SHOW_HIDDEN 1
-#define SCAN_CONF_SCAN_TYPE WIFI_SCAN_TYPE_ACTIVE
-#define SCAN_CONF_PASSIVE_SCAN_TIME 360
-#define SCAN_CONF_ACTIVE_MAX 100
-#define MAX_SSID_LEN 32
-#define BSSID_LEN 6
-
 // Maintain a list of APs in order of RSSI
-static wifi_conf_t conf;
 static wifi_scan_config_t scan_conf = {0};
 static uint8_t scan_ssid[MAX_SSID_LEN + 1] = {0};
-static uint8_t scan_bssid[BSSID_LEN] = {0};
-static wifi_ap_record_t* ap_info;
+static uint8_t scan_bssid[MAC_LEN] = {0};
+static wifi_ap_record_t ap_info[sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint16_t ap_count = 0;
 
 static esp_netif_t *sta_netif = NULL;
 static esp_netif_t *ap_netif = NULL;
 
 // Maintain an "active ap" mac list. That is we choose an AP to target and we
-// log every STA MAC that is associated with that AP
-#define MAC_LEN 6
-static uint8_t* active_mac_list = NULL;
-static int8_t* active_mac_list_rssi = NULL;
+// log every STA MAC that is associated with that AP. We also can launch a
+// promiscious packet sniffer that will listen for WPA handshakes
+struct sta
+{
+    uint8_t mac[MAC_LEN];
+    int8_t rssi;
+} typedef sta_t;
+
+static sta_t active_mac_list[sizeof(sta_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint8_t active_mac_list_len = 0;
 static uint8_t target_ap = 0;
 static uint8_t sta_scanner_running = 0;
 static SemaphoreHandle_t active_mac_list_lock;
+
+// We allocate a single buffer to store a single WPA2 handshake. When scanning
+// for handshakes, we have a target AP which means we only need one handshake
+// to crack that AP. Moreover, we call clear active macs before and after we
+// start a new scan which flushes the full eapol packets to flash mem.
+#define EAPOL_MAX_PKT_LEN 256
+#define EAPOL_NUM_PKTS    4
+#define EAPOl_SEMA_TIMEOUT_MS 10
+static uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
+static uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
+static SemaphoreHandle_t eapol_lock;
+
+// We maintain a single timer to be used as a "poll n dump" function ie ever
+// TIMER_DELAY_MS milliseconds execute a function that usually polls and sends
+// data to the serial console or the lcd
+static esp_timer_handle_t gp_timer;
+static esp_timer_create_args_t gp_timer_args = 
+{
+    .callback = NULL,
+    .name = "Wifi GP Timer"
+};
+static uint8_t gp_timer_running = 0;
 
 static void _init_wifi()
 {
@@ -49,7 +81,7 @@ static void _init_wifi()
     sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
 
-    if(conf.create_ap_if)
+    if(CREATE_AP_IF)
     {
         ap_netif = esp_netif_create_default_wifi_ap();
         assert(ap_netif);
@@ -75,13 +107,44 @@ static void _init_wifi()
     ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
                 mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
-    if(conf.create_ap_if)
+    if(CREATE_AP_IF)
     {
-    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
-    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+        ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
+        ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                    mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
     }
+}
+
+//*****************************************************************************
+// General Purpose Timer
+//*****************************************************************************
+
+static void gp_timer_create_n_start(void* fp)
+{
+    if(gp_timer_running)
+    {
+        ESP_LOGE(TAG, "GP Timer started when already running");
+        return;
+    }
+
+    gp_timer_args.callback = fp;
+    ESP_ERROR_CHECK(esp_timer_create(&gp_timer_args, &gp_timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(gp_timer, TIMER_DELAY_MS*1000));
+    gp_timer_running = 1;
+}
+
+static void gp_timer_stop_n_destroy(void)
+{
+    if(!gp_timer_running)
+    {
+        ESP_LOGE(TAG, "GP Timer stoped when not running");
+        return;
+    }
+
+    ESP_ERROR_CHECK(esp_timer_stop(gp_timer));
+    ESP_ERROR_CHECK(esp_timer_delete(gp_timer));
+    gp_timer_running = 0;
 }
 
 //*****************************************************************************
@@ -90,15 +153,16 @@ static void _init_wifi()
 
 static void update_ap_info()
 {
-    uint16_t max_ap_count = conf.scan_list_size;
-    memset(ap_info, 0, sizeof(wifi_ap_record_t) * conf.scan_list_size);
+    uint16_t max_ap_count = DEFAULT_SCAN_LIST_SIZE;
+    ESP_LOGE(TAG, "tick");
     esp_wifi_scan_start(&scan_conf, true);
+    ESP_LOGE(TAG, "tock");
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
     
-    if(ap_count >= conf.scan_list_size)
+    if(ap_count >= DEFAULT_SCAN_LIST_SIZE)
     {
-        ap_count = conf.scan_list_size;
+        ap_count = DEFAULT_SCAN_LIST_SIZE;
     }
 
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
@@ -125,11 +189,16 @@ static int32_t find_ap(char* ssid)
     return -1;
 }
 
-static void _set_scan_target(int32_t i)
+static void set_ap_scan_target(uint8_t i)
 {
+    if(i >= ap_count )
+    {
+        ESP_LOGE(TAG, "in set ap scan target, index outof bounds");
+        return;
+    }
     scan_conf.channel = ap_info[i].primary;
     strncpy((char*)scan_ssid,(char*) ap_info[i].ssid, MAX_SSID_LEN);
-    memcpy(scan_bssid, ap_info[i].bssid, BSSID_LEN);
+    memcpy(scan_bssid, ap_info[i].bssid, MAC_LEN);
 
     scan_conf.ssid = scan_ssid;
     scan_conf.bssid = scan_bssid;
@@ -157,13 +226,56 @@ static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
 
 static inline uint8_t* get_nth_mac(uint8_t n)
 {
-    return active_mac_list + (n*MAC_LEN);
+    if(n >= active_mac_list_len)
+    {
+        ESP_LOGE(TAG, "In get nth mac, out of bounds");
+        return NULL;
+    }
+
+    return (uint8_t*) &(active_mac_list[n]);
 }
 
-
-static void insert_mac(uint8_t* m1, int8_t rssi)
+static inline int8_t get_nth_rssi(uint8_t n)
 {
-    if(active_mac_list_len == conf.scan_list_size)
+    if(n >= active_mac_list_len)
+    {
+        ESP_LOGE(TAG, "In get nth rssi, out of bounds");
+        return -1;
+    }
+
+    return active_mac_list[n].rssi;
+}
+
+static inline void set_nth_mac(uint8_t n, uint8_t* m1)
+{
+    if(n >= active_mac_list_len)
+    {
+        ESP_LOGE(TAG, "In set nth mac, out of bounds");
+        return;
+    }
+
+    uint8_t i;
+    for(i = 0; i < MAC_LEN; ++i)
+    {  
+        get_nth_mac(n)[i] = m1[i];
+    }
+
+}
+
+static inline void set_nth_rssi(uint8_t n, int8_t rssi)
+{
+     if(n >= active_mac_list_len)
+    {
+        ESP_LOGE(TAG, "In set nth rssi, out of bounds");
+        return;
+    }
+
+    active_mac_list[n].rssi = rssi;
+}
+
+static inline void insert_mac(uint8_t* m1, int8_t rssi)
+{
+    if(active_mac_list_len == DEFAULT_SCAN_LIST_SIZE)
     {
         ESP_LOGE(TAG, "ACTIVE MAC LIST FULL");
         return;
@@ -180,20 +292,15 @@ static void insert_mac(uint8_t* m1, int8_t rssi)
     {
         if(mac_is_eq(m1, get_nth_mac(i)))
         {
-            active_mac_list_rssi[i] = rssi;
+            set_nth_rssi(i, rssi);
             assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
             return;
         }
     }
 
-    for(i = 0; i < MAC_LEN; ++i)
-    {  
-        get_nth_mac(active_mac_list_len)[i] = m1[i];
-    }
-
-    active_mac_list_rssi[active_mac_list_len] = rssi;
-    
     ++active_mac_list_len;
+    set_nth_mac(active_mac_list_len-1, m1);    
+    set_nth_rssi(active_mac_list_len-1, rssi);
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 
 }
@@ -207,7 +314,6 @@ static void clear_active_mac_list(void)
     }
 
     active_mac_list_len = 0;
-    memset(active_mac_list, 0, conf.scan_list_size*MAC_LEN);
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 }
 
@@ -222,6 +328,86 @@ static void set_sta_scan_target(uint8_t ap_index)
     ESP_LOGI(TAG, "STA Scan target set to %s", ap_info[ap_index].ssid);
     target_ap = ap_index;
 
+}
+
+static inline int16_t get_seq_num(uint8_t* pkt, uint16_t len)
+{
+    if(len <= SEQ_NUM_UB)
+    {
+        ESP_LOGE(TAG, "in get seq num, pakt too small");
+        return -1;
+    }
+
+    int16_t lb = (((int16_t)pkt[SEQ_NUM_LB]) & SEQ_NUM_LB_MASK) >> SEQ_NUM_LB_RSHIFT;
+    int16_t ub = (((int16_t)pkt[SEQ_NUM_UB]) & SEQ_NUM_UB_MASK) << SEQ_NUM_UB_LSHIFT; 
+
+    return lb + ub;
+}
+
+static inline uint8_t get_to_ds(uint8_t* pkt)
+{
+    return !(!(pkt[TO_DS_BYTE] & TO_DS_MASK));
+}
+
+static inline uint8_t get_from_ds(uint8_t* pkt)
+{
+    return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
+}
+
+// -1 if not eapol, else packet nume in handshake
+static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
+{
+
+    if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
+    {
+        uint8_t num = 0;
+        int16_t s = get_seq_num(p, len);
+        uint8_t to = get_to_ds(p);
+        uint8_t from = get_from_ds(p);
+
+        if(s == 0 && to == 0 && from == 1)
+        {
+            num = 0;
+            
+        }
+        else if(s == 0 && to == 1 && from == 0)
+        {
+            num = 1;
+        }
+        else if(s == 1 && to == 0 && from == 1)
+        {
+            num = 2;
+        }
+        else if(s == 1 && to == 1 && from == 0)
+        {
+            num = 3;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "WAAAHHH -> seq=%d   to_ds=%d   from_ds=%d", s, to, from);
+            return;
+        }
+
+        ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d/4)", ap_info[target_ap].ssid, num+1);
+
+        if(!xSemaphoreTake(eapol_lock, EAPOl_SEMA_TIMEOUT_MS / portTICK_PERIOD_MS))
+        {
+            ESP_LOGE(TAG, "BAD VERY BAD .. EAPOL lock time out on handshake pkt %d/4 ... dropping pkt", num+1);
+            return;
+        }
+
+        if(len >= EAPOL_MAX_PKT_LEN)
+        {
+            ESP_LOGE(TAG, "ERROR EAPOL packet too long");
+            assert(xSemaphoreGive(eapol_lock));
+        }
+
+        eapol_pkt_lens[num] = len;
+        memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
+
+        assert(xSemaphoreGive(eapol_lock));
+
+    }
 }
 
 static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
@@ -246,16 +432,19 @@ static void mac_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     
         insert_mac(m2, p->rx_ctrl.rssi);
 
-        if((p->rx_ctrl.sig_len > 0x22) && (p->payload[0x20] == 0x88) && (p->payload[0x21] == 0x8e))
-        {
-            printf("KEY INFO HERE\n");
-        }
+        eapol_pkt_parse(p->payload, p->rx_ctrl.sig_len);
     }
 
 }
 
 static void launch_mac_sniffer()
 {
+    if(sta_scanner_running)
+    {
+        ESP_LOGE(TAG, "Called launch mac sniffer when already running");
+        return;
+    }
+
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(1));
 
     wifi_promiscuous_filter_t filt = 
@@ -266,12 +455,20 @@ static void launch_mac_sniffer()
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&mac_sniffer_cb));
     ESP_ERROR_CHECK(esp_wifi_set_channel(ap_info[target_ap].primary, WIFI_SECOND_CHAN_NONE));
+    sta_scanner_running = 1;
 
 }
 
 static void kill_mac_sniffer(void)
 {
+    if(!sta_scanner_running)
+    {
+        ESP_LOGE(TAG, "Called kill_mac_sniffer when not running");
+        return;
+    }
+
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(0));
+    sta_scanner_running = 0;
 }
 
 //*****************************************************************************
@@ -359,19 +556,6 @@ void scan_ui_cmd(void)
 // FINI - Simply make sure our poll task is dead
 //*****************************************************************************
 
-static uint8_t scan_rssi_running = 0;
-static SemaphoreHandle_t xSemaphore = NULL;
-static TaskHandle_t scan_rssi_task_handle = 0;
-
-static void kill_scan_rssi_task(void)
-{
-    ESP_LOGI(TAG, "KILLING SCAN RSSI TASK");
-    scan_rssi_running = 0;
-    assert(xSemaphoreTake( xSemaphore, 2*conf.ap_poll_delay_ms / portTICK_PERIOD_MS ) == pdTRUE);
-    ESP_LOGI(TAG, "KILLED SCAN RSSI TASK");
-    
-}
-
 static void list_ssids_lcd(void)
 {
     uint8_t i;
@@ -386,42 +570,27 @@ static void list_ssids_lcd(void)
 
 static void scan_rssi_task()
 {
-    // grab
-    assert(xSemaphoreTake( xSemaphore, conf.ap_poll_delay_ms / portTICK_PERIOD_MS ) == pdTRUE);
-
     char line_buff[20] = {0};
-    for(;;)
-    {
-        update_ap_info();
-        snprintf(line_buff,19, "RSSI=%03d", ap_info[0].rssi);
-        push_to_line_buffer(3, line_buff);
-        home_screen_pos();
-        update_line(3);
-
-        if(scan_rssi_running == 0) { break; }
-        vTaskDelay(conf.ap_poll_delay_ms / portTICK_PERIOD_MS);
-        if(scan_rssi_running == 0) { break; }
-
-    }
-
-    // release
-    assert(xSemaphoreGive(xSemaphore) == pdTRUE);
-
-    vTaskDelete(NULL);
+    
+    update_ap_info();
+    snprintf(line_buff,19, "RSSI=%03d", ap_info[0].rssi);
+    push_to_line_buffer(3, line_buff);
+    home_screen_pos();
+    update_line(3);
 }
 
 static void scan_rssi_fini()
 {
-    if(scan_rssi_running)
+    if(gp_timer_running)
     {
-        kill_scan_rssi_task();
+        gp_timer_stop_n_destroy();
     }  
 }
 
 static void scan_rssi_on_press_cb(uint8_t index)
 {
 
-    if(!scan_rssi_running)
+    if(!gp_timer_running)
     {
         if(index >= ap_count)
         {
@@ -429,24 +598,19 @@ static void scan_rssi_on_press_cb(uint8_t index)
             return;
         }
 
-        scan_rssi_running = 1;
-        _set_scan_target(index);
+        
+        set_ap_scan_target(index);
 
         uint8_t line_counter = 0;
-        lcd_dump_ap(index, &line_counter);
-        home_screen_pos();
         lock_cursor();
+        home_screen_pos();
+        lcd_dump_ap(index, &line_counter);
         update_display();
-
-        ESP_LOGI(TAG, "STARTING SCAN RSSI TASK");
-        assert(xSemaphoreGive(xSemaphore) == pdTRUE);
-        xTaskCreate( scan_rssi_task, "scan_rssi_task", 4096, NULL, conf.ap_poll_prio, &scan_rssi_task_handle );
-        assert(scan_rssi_task_handle);
-        
+        gp_timer_create_n_start(&scan_rssi_task);
     }
     else
     {
-        kill_scan_rssi_task();
+        gp_timer_stop_n_destroy();
 
         home_screen_pos();
         push_to_line_buffer(0, "Scanning ...");
@@ -465,15 +629,14 @@ static void scan_rssi_on_press_cb(uint8_t index)
 
 static void scan_rssi_ini()
 {
-    ESP_LOGI(TAG, "SCAN RSSI UI CMD");
+    lock_cursor();
     home_screen_pos();
     push_to_line_buffer(0, "Scanning ...");
     push_to_line_buffer(1, "");
     push_to_line_buffer(2, "");
     push_to_line_buffer(3, "");
     update_display();
-    lock_cursor();
-
+    
     set_scan_all();
     update_ap_info();
     list_ssids_lcd();
@@ -483,8 +646,6 @@ static void scan_rssi_ini()
 //*****************************************************************************
 // REPL Scan Cmds
 //*****************************************************************************
-
-static TaskHandle_t ap_poll_handle = 0;
 
 static int do_dump_ap_info(int argc, char** argv)
 {
@@ -524,18 +685,14 @@ static int do_set_scan_target(int argc, char** argv)
         return 1;
     }
 
-    _set_scan_target(i);
+    set_ap_scan_target(i);
 
     return 0;
 }
 
 static void ap_poll_task(void* arg)
 {
-    for(;;)
-    {
-        do_dump_ap_info(0, NULL);
-        vTaskDelay(conf.ap_poll_delay_ms / portTICK_PERIOD_MS);
-    }
+    do_dump_ap_info(0, NULL);
 }
 
 static int do_scan_poll(int argc, char** argv)
@@ -557,27 +714,13 @@ static int do_scan_poll(int argc, char** argv)
 
     if(!start)
     {
-        if(ap_poll_handle != NULL)
-        {
-            printf("Scan poll already running\n");
-            return 1;
-        }
-
-        xTaskCreate( ap_poll_task, "ap_poll_task", 2048, NULL, conf.ap_poll_prio, &ap_poll_handle );
-        assert(ap_poll_handle != NULL);
+        gp_timer_create_n_start(&ap_poll_task);
         return 0;
     }
 
     if(!stop)
     {
-        if(ap_poll_handle == NULL)
-        {
-            printf("Scan poll already stopped\n");
-            return 1;
-        }
-
-        vTaskDelete( ap_poll_handle );
-        ap_poll_handle = NULL;
+        gp_timer_stop_n_destroy();
         return 0;
     }
 
@@ -588,15 +731,13 @@ static int do_scan_poll(int argc, char** argv)
 // STA Scanner REPL CMD
 //*****************************************************************************
 
-static esp_timer_handle_t periodic_timer;
-
 static void sta_scan_dump_timer(void* arg)
 {
     uint8_t i;
     for(i = 0; i < active_mac_list_len; ++i)
     {
         uint8_t* m1 = get_nth_mac(i);
-        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x   RSSI=%03d\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], active_mac_list_rssi[i]);
+        printf("MAC %d = %02x:%02x:%02x:%02x:%02x:%02x   RSSI=%03d\n", i, m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], get_nth_rssi(i));
     }
     printf("\n");
 
@@ -611,38 +752,27 @@ static int do_sta_scan_start(int argc, char** argv)
     }
 
     set_sta_scan_target( (uint8_t) strtol(argv[1], NULL,10) );
-
-    const esp_timer_create_args_t periodic_timer_args = 
-    {
-        .callback = &sta_scan_dump_timer,
-        .name = "sta scan dump timer"
-    };
-
+    clear_active_mac_list();
     launch_mac_sniffer();
-    
-    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 1000000));
-
-    sta_scanner_running = 1;
+    gp_timer_create_n_start(&sta_scan_dump_timer);
 
     return 0;
 }
 
 static int do_sta_scan_stop(int argc, char** argv)
 {
-    if(!sta_scanner_running)
+    if(!gp_timer_running)
     {
         ESP_LOGE(TAG, "STA Scanner not running");
         return 1;
     }
 
-    sta_scanner_running = 0;
-    clear_active_mac_list();
-    ESP_ERROR_CHECK(esp_timer_stop(periodic_timer));
-    ESP_ERROR_CHECK(esp_timer_delete(periodic_timer));
+    gp_timer_stop_n_destroy();
 
     // Reset Wifi driver to original state
     kill_mac_sniffer();
+    clear_active_mac_list();
+
 
     return 0;
 }
@@ -652,11 +782,10 @@ static int do_sta_scan_stop(int argc, char** argv)
 // updating the screen with number of MACS found. Pressing the button stops the
 // scanning and presents the list of MACS and an option to go back to scanning.
 // If the index is a MAC, then we start scanning only that STA, reporting the
-// rssi. A single press on this screen brings you back to scanning but does not
-// clear the set of MACs found.
+// rssi. A single press on this screen brings you back to num macs scanning and
+// does not clear the set of MACs found.
 //*****************************************************************************
-static esp_timer_handle_t report_num_macs_timer;
-static esp_timer_handle_t report_rssi_timer;
+
 static uint8_t report_num_macs_timer_running = 0;
 static uint8_t selecting_target_mac = 0;
 static uint8_t report_rssi_timer_running = 0;
@@ -672,52 +801,34 @@ static void report_num_macs_cb(void* args)
 
 static void start_report_num_macs_timer(void)
 {
-    const esp_timer_create_args_t args = 
-    {
-        .callback = &report_num_macs_cb,
-        .name = "sta scan ui dump mac timer"
-    };
-
-    ESP_ERROR_CHECK(esp_timer_create(&args, &report_num_macs_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(report_num_macs_timer, 1000000));
-
+    gp_timer_create_n_start(&report_num_macs_cb);
     report_num_macs_timer_running = 1;
 }
 
 static void stop_report_num_macs_timer(void)
 {
-    ESP_ERROR_CHECK(esp_timer_stop(report_num_macs_timer));
-    ESP_ERROR_CHECK(esp_timer_delete(report_num_macs_timer));
+    gp_timer_stop_n_destroy();
     report_num_macs_timer_running = 0;
 }
 
 static void report_rssi_cb(void* args)
 {   
     char line[20];
-    snprintf(line, 19, "RSSI = %03d   ", active_mac_list_rssi[target_mac]);
+    snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
     push_to_line_buffer(2, line);
     update_line(2);
 }
 
 static void start_report_rssi_timer(void)
 {
-    const esp_timer_create_args_t args = 
-    {
-        .callback = &report_rssi_cb,
-        .name = "sta scan ui dump mac rssi timer"
-    };
-
-    ESP_ERROR_CHECK(esp_timer_create(&args, &report_rssi_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(report_rssi_timer, 1000000));
+    gp_timer_create_n_start(&report_rssi_cb);
     report_rssi_timer_running = 1;
 }
 
 static void stop_report_rssi_timer(void)
 {
-    ESP_ERROR_CHECK(esp_timer_stop(report_rssi_timer));
-    ESP_ERROR_CHECK(esp_timer_delete(report_rssi_timer));
+    gp_timer_stop_n_destroy();
     report_rssi_timer_running = 0;
-
 }   
 
 static void scan_sta_ui_fini(void) 
@@ -834,7 +945,7 @@ static void scan_sta_ui_cb(uint8_t index)
         push_to_line_buffer(0, line);
         snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(target_mac)[0], get_nth_mac(target_mac)[1], get_nth_mac(target_mac)[2],get_nth_mac(target_mac)[3],get_nth_mac(target_mac)[4],get_nth_mac(target_mac)[5]);
         push_to_line_buffer(1, line);
-        snprintf(line, 19, "RSSI = %03d   ", active_mac_list_rssi[target_mac]);
+        snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
         push_to_line_buffer(2, line);
         push_to_line_buffer(3, "");
         update_display();
@@ -887,27 +998,14 @@ static void scan_sta_ui_ini(void)
 // PUBLIC
 //*****************************************************************************
 
-void init_wifi(wifi_conf_t* _conf)
+void init_wifi(void)
 {
-    if(ap_info)
-    {
-        ESP_LOGE(TAG, "ERROR init wifi called twice");
-        return;
-    }
-
-    memcpy(&conf, _conf, sizeof(wifi_conf_t));
-
-    ap_info = malloc(_conf->scan_list_size*sizeof(wifi_ap_record_t));
-    active_mac_list = malloc(MAC_LEN * _conf->scan_list_size);
-    active_mac_list_rssi = malloc(_conf->scan_list_size);
-    assert(ap_info);
-    assert(active_mac_list);
-
     _init_wifi();
-    xSemaphore = xSemaphoreCreateBinary();
     active_mac_list_lock = xSemaphoreCreateBinary();
+    eapol_lock = xSemaphoreCreateBinary();
+
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-    assert(xSemaphore);
+    assert(xSemaphoreGive(eapol_lock) == pdTRUE);
 }
 
 void register_wifi(void)

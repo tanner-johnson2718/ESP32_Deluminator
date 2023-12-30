@@ -14,7 +14,6 @@
 | [User Iterface](./esp32_sys_overview.md#user-interface) |
 | [System Start Up](./esp32_sys_overview.md#system-boot-up) |
 | [Wifi]() |
-| [Tasks]() |
 
 
 # REPL

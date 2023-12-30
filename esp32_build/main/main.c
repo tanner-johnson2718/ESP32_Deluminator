@@ -1,46 +1,20 @@
-// Entry Point for the ESP32 Delum. Some Notes on design:
+// Entry Point for the ESP32 Delum. Here all we do is the 4 main modules:
 //
-// * Should stick to an async / event oriented design
-// * PINs, Max file size, and config should be preprocessor macros here
-// * Every Module provides an init function that takes a module_conf_t type to pass defines
-// * These conf structs get copied into the static global space of that module
-// * Modules that wish to register repl commands export a register_module() func
-//    * repl.h provides an api for doing so
+// * REPL
+// * WIFI
+// * UI
+// * Flash
+//
+// Each of these modules export an init and register function for initing and
+// registering repl commands. Some of them export UI commands and tasks to be
+// started which get called here.
 
 #include "repl.h"
 #include "user_interface.h"
 #include "flash_man.h"
 #include "wifi.h"
 #include "esp_event.h"
-
-// FS defines
-#define MOUNT_PATH "/spiffs"
-#define MAX_FILES 32
-
-// REPL defines
-#define PROMPT_STR "$~>"
-#define MAX_CMD_LINE_LEN 80
-#define HISTORY_PATH MOUNT_PATH "/history.txt"
-#define MAX_HISTORY_LEN 4096
-
-// User Interface defines
-#define SDA_PIN  25
-#define SCL_PIN  26
-#define BUTTON_PIN 33
-#define ROT_A_PIN 32
-#define ROT_B_PIN 27
-#define LCD_ADDR 0x27
-#define LCD_COLS 20
-#define LCD_ROWS 4
-#define I2C_CLK_SPEED 50000
-#define MAX_NUM_UI_CMDS 32
-#define MAX_UI_LOG_LINES 128
-
-// Wifi defines
-#define AP_POLL_PRIO tskIDLE_PRIORITY
-#define AP_POLL_DELAY_MS 500
-#define DEFAULT_SCAN_LIST_SIZE 32
-#define CREATE_AP_IF 0
+#include "conf.h"
 
 void app_main(void)
 {
@@ -62,15 +36,13 @@ void app_main(void)
 
     flash_conf_t flash_conf = {MOUNT_PATH, MAX_FILES};
 
-    wifi_conf_t wifi_conf = {AP_POLL_PRIO, AP_POLL_DELAY_MS, DEFAULT_SCAN_LIST_SIZE, CREATE_AP_IF};
-
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     init_flash(&flash_conf);
     init_repl(&repl_conf);
     init_user_interface(&ui_conf);
-    init_wifi(&wifi_conf);
+    init_wifi();
 
-    /* Register commands */
+    /* Register repl commands */
     register_user_interface();
     register_misc_cmds();
     register_flash();
