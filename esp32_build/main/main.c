@@ -7,7 +7,9 @@
 //
 // Each of these modules export an init and register function for initing and
 // registering repl commands. Some of them export UI commands and tasks to be
-// started which get called here.
+// started which get called here. All the main task does is call the
+// module init, register and start commands and then the main app image is
+// replaced with that of the serial console repl
 
 #include "repl.h"
 #include "user_interface.h"

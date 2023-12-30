@@ -16,7 +16,6 @@ static struct
 } no_args;
 
 static esp_console_repl_t *repl = NULL;
-static esp_console_repl_config_t repl_config = {};
 
 //*****************************************************************************
 // PRIVATE
@@ -179,26 +178,24 @@ void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
 
 }
 
-void init_repl(repl_conf_t* _conf)
+void init_repl(void)
 {   
 
     esp_console_repl_config_t _repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    memcpy(&repl_config, &_repl_config, sizeof(esp_console_repl_config_t));
-
-    repl_config.prompt = _conf->prompt;
-    repl_config.max_cmdline_length = _conf->max_cmdline_length;
-    repl_config.history_save_path = _conf->history_save_path;
-    repl_config.max_history_len = _conf->max_history_len;
-
-    ESP_LOGI(TAG, "Console Inited. Saving history too %s", _conf->history_save_path);
+    ESP_LOGI(TAG, "REPL Inited. Saving history too %s", HISTORY_PATH);   
 }
 
-void start_repl()
+void start_repl(void)
 {
+    repl_config.prompt = PROMPT_STR;
+    repl_config.max_cmdline_length = MAX_CMD_LINE_LEN;
+    repl_config.history_save_path = HISTORY_PATH;
+    repl_config.max_history_len = MAX_HISTORY_LEN;
+
     esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
 
-    ESP_LOGI(TAG, "Console Starting");
+    ESP_LOGI(TAG, "REPL Starting");
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
 

@@ -1,26 +1,23 @@
-# ESP 32 Deluminator System Overview
+# ESP 32 Deluminator System Overview / Design
 
-* Start with `system/console/basic/example` to give us an interactive starting point
-* Build, flash, and use USB UART as described [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
-* This document will describe the key esp32 systems concepts used by this project
-* And in particular will serve as the high level design doc for the coding and systems aspect of the ESP 32 Deluminator
-* The build and src location is here [esp32_build](../esp32_build/)
+Welcome to ESP 32 Deluminator system design and overview. The goal of this document is to describe and provide a reference for some of the system config and design our esp32 project will be using. To Build, flash, and commonicate with esp32 over USB UART see [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up). All the src location is located at [esp32_build](../esp32_build/).
 
 
 | **TABLE OF CONTENTS** |
 | --- |
 | [Serial Based REPL](./esp32_sys_overview.md#repl) |
-| [Flash Memory](./esp32_sys_overview.md#flash-memory) |
 | [User Iterface](./esp32_sys_overview.md#user-interface) |
-| [System Start Up](./esp32_sys_overview.md#system-boot-up) |
 | [Wifi]() |
+| [Flash Memory](./esp32_sys_overview.md#flash-memory) |
+| [Appendix](./esp32_sys_overview.md#system-boot-up) |
+
 
 
 # REPL
 
 * [Implementation](./esp32_build/main/repl.c)
 * [Header File with some extra details](./esp32_build/main/repl.h)
-* We used the code from the console example provided by esp-idf
+* Based on esp-idf example `system/console/basic/example` and uses the `esp_console` console API
 * The header file shows one how to use it but its pretty straight forward
 * With this module we get a interactive console to run any commands we register
 * Also, this gives us a debug log
