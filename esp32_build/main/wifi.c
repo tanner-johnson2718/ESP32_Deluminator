@@ -235,7 +235,10 @@ static uint8_t handle_file_req(void)
     {
         while((dir = readdir(d))!=NULL)
         {
-
+            if(strcmp(d->d_name, rx_buffer) == 0))
+            {
+                break;
+            }
         }
 
         closedir(d);
@@ -245,6 +248,17 @@ static uint8_t handle_file_req(void)
         ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
         return 1;
     }
+
+    if(dir == NULL)
+    {
+        ESP_LOGE(TAG, "In handle_file_req - requested non existent file %s", rx_buffer);
+        return 0;
+    }
+
+    // Send file
+    
+
+    
     return 0;
 }
 
