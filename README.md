@@ -6,7 +6,7 @@ Welcome to the ESP 32 Deluminator project. The name is a reference to Dumbledor'
 * (2) Explore the wifi 802.11 protocol and internal workings of this medium
 * (3) Explore the HW and programming model of the ESP32
 
-![alt text](./res/delum.jpg)
+![alt text](./Docs/delum.jpg)
 
 # Disclaimer
 
