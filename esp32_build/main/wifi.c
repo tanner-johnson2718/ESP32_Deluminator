@@ -152,6 +152,7 @@ struct client
     uint8_t  id;
     TaskHandle_t handler_task;
     int socket;
+    int listen_sock;
     char ip_addr[16];
 } typedef client_t;
 
@@ -195,12 +196,6 @@ static uint8_t* get_client_mac(void)
 
 static void deauth_client(void)
 {
-    if(get_client_state() == CLIENT_STA_NOT_CONN)
-    {
-        ESP_LOGE(TAG, "in deauth client - tried to deauth client when none exists");
-        return;
-    }
-
     ESP_ERROR_CHECK(esp_wifi_deauth_sta(client.id));
     ESP_LOGI(TAG, "station "MACSTR" kicked, AID = %d", MAC2STR(get_client_mac()), get_client_soc_ap_id());  
 }
@@ -209,10 +204,11 @@ static void deauth_client(void)
 // TCP Server Logic
 //*****************************************************************************
 
+// returns a 1 if the error caused should reset the tcp connection
 static uint8_t handle_file_req(void)
 {
     uint8_t rx_buffer[33];
-    int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+    int len = recv(client.socket, rx_buffer, sizeof(rx_buffer) - 1, 0);
     
     if(len < 0)
     {
@@ -226,6 +222,10 @@ static uint8_t handle_file_req(void)
     }
     
     rx_buffer[len] = 0;
+    if((char) rx_buffer[len-1] == '\n')
+    {
+        rx_buffer[len-1] = 0;
+    }
 
     DIR *d;
     struct dirent *dir;
@@ -235,7 +235,7 @@ static uint8_t handle_file_req(void)
     {
         while((dir = readdir(d))!=NULL)
         {
-            if(strcmp(d->d_name, rx_buffer) == 0))
+            if(strcmp(dir->d_name, (char*) rx_buffer) == 0)
             {
                 break;
             }
@@ -246,7 +246,7 @@ static uint8_t handle_file_req(void)
     else
     {
         ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
-        return 1;
+        return 0;
     }
 
     if(dir == NULL)
@@ -256,12 +256,41 @@ static uint8_t handle_file_req(void)
     }
 
     // Send file
-    
+    ESP_LOGI(TAG, "File %s requested", rx_buffer);
+    uint8_t tx_buffer[256];
+    char path[33];
+    sprintf(path, "%s/%.22s", MOUNT_PATH, rx_buffer);
+    FILE* f = fopen(path, "r");
 
-    
+    if(!f)
+    {
+        ESP_LOGE(TAG, "In handle_file_req - Failed to open %s", path);
+        return 0;
+    }
+
+    size_t num_read = 0;
+    int still_sending = 1;
+    while(still_sending)
+    {
+        num_read = fread(tx_buffer, 1, 256, f);
+        if(num_read < 256)
+        {
+            still_sending = 0;
+        }
+
+        ESP_LOGI(TAG, "Sending %d bytes ...", num_read);
+        if( send(client.socket, tx_buffer, num_read, 0) < 1)
+        {
+            ESP_LOGE(TAG, "In handle_file_req - Failed to send file data");
+            break;
+        }
+    }
+
+    fclose(f);
     return 0;
 }
 
+// Returns a 1 if the error caused should reset the tcp connection
 static uint8_t present_files(void)
 {
     DIR *d;
@@ -273,20 +302,15 @@ static uint8_t present_files(void)
         while((dir = readdir(d))!=NULL)
         {
             uint8_t len = strlen(dir->d_name);
-            uint8_t sent = 0;
-            while(sent != len)
+            int written =send(client.socket, dir->d_name, len, 0);
+            if(written < 0)
             {
-                int written = send(client.socket, dir->d_name + sent, len - sent, 0);
-                if(written < 0)
-                {
-                    ESP_LOGE(TAG, "In present Files - send error");
-                    return 1;
-                }
-
-                sent += written;
+                ESP_LOGE(TAG, "In present Files - send error");
+                return 1;
             }
+            
 
-            int written = send(client.socket, "\n", 1, 0);
+            written = send(client.socket, "\n", 1, 0);
             if(written < 0)
             {
                 ESP_LOGE(TAG, "In present Files - send error");
@@ -310,10 +334,15 @@ static uint8_t present_files(void)
 static void client_handler_task(void* args)
 {
 
-    int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-    assert(listen_sock > 0);
+    client.listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if(client.listen_sock < 0)
+    {
+        ESP_LOGE(TAG, "Failed to open listening socket");
+        goto clean_up0;
+    }
+
     int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(client.listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     ESP_LOGI(TAG, "Listening Socket Created");
 
     struct sockaddr_storage dest_addr;
@@ -321,23 +350,25 @@ static void client_handler_task(void* args)
     dest_addr_ip4->sin_addr.s_addr = inet_addr(TCP_SERVER_IP);
     dest_addr_ip4->sin_family = AF_INET;
     dest_addr_ip4->sin_port = htons(TCP_SERVER_PORT);
-    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    assert(!err);
+    int err = bind(client.listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    err |= listen(client.listen_sock, 1);
+    
+    if(err)
+    {
+        ESP_LOGE(TAG, "Failed to bind listening socket");
+        goto clean_up0;
+    }
+
     ESP_LOGI(TAG, "Listening socket bound to %s:%d", TCP_SERVER_IP, TCP_SERVER_PORT);
 
-    err = listen(listen_sock, 1);
-    assert(!err);
-
-    while(1)
+    while(client.state != CLIENT_STA_NOT_CONN)
     {
-
-        ESP_LOGI(TAG, "Listening for connections ... ");
         struct sockaddr_in source_addr;
         socklen_t addr_len = sizeof(source_addr);
 
         set_client_state(CLIENT_WAITING_ON_TCP_CONN);
 
-        client.socket = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
+        client.socket = accept(client.listen_sock, (struct sockaddr *)&source_addr, &addr_len);
         if (client.socket < 0) {
             ESP_LOGE(TAG, "Unable to accept connection: %s", strerror(errno));
             continue;
@@ -347,14 +378,14 @@ static void client_handler_task(void* args)
         set_client_state(CLIENT_TCP_CONN);
         ESP_LOGI(TAG, "Client Connected %s - Starting Session", client.ip_addr);
 
-        while(1)
+        while(client.state != CLIENT_STA_NOT_CONN)
         {
             if(present_files())
             {
                 break;
             }
 
-            if(handle_file_req())
+            if(handle_file_req())   // Generally block here
             {
                 break;
             }
@@ -365,8 +396,14 @@ static void client_handler_task(void* args)
         close(client.socket);
     }
 
-    // Clean up listening socket resources including this task
-    close(listen_sock);
+    // Clean up listening socket resources including this task. We force the
+    // client to disconnect from the Soc AP here (if it that isnt what caused)
+    // us to get here.
+clean_up0:
+    close(client.listen_sock);
+    deauth_client();
+    set_client_state(CLIENT_STA_NOT_CONN);
+    ESP_LOGI(TAG, "Client Event Handler Task Exiting ...");
     vTaskDelete(NULL);
 }
 
@@ -374,7 +411,12 @@ static void launch_client_handler_task(void)
 {
     memset(&client.handler_task, 0, sizeof(TaskHandle_t));
     xTaskCreate(client_handler_task, "tcp_server", 4096, NULL, TCP_SERVER_PRIO, &client.handler_task);
-    assert(client.handler_task);
+    
+    if(!client.handler_task)
+    {
+        ESP_LOGE(TAG,"Failed to start Client Handler Task");
+        // set_client_state(CLIENT_STA_CONN);
+    }
 
     ESP_LOGI(TAG, "Client Handler Task Launched");
 }
@@ -391,21 +433,23 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         
+        // ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" with id=%d connected to SoC AP", MAC2STR(get_client_mac()), get_client_soc_ap_id());
+
         set_client_mac(event->mac);
         set_client_soc_ap_id(event->aid);
         set_client_state(CLIENT_STA_CONN);
         launch_client_handler_task();
-
-        ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" with id=%d connect processed", MAC2STR(get_client_mac()), get_client_soc_ap_id());
-
         
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
     {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" leave, AID=%d", MAC2STR(event->mac), event->aid);
+        ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" Diconnect Event, AID=%d", MAC2STR(event->mac), event->aid);
 
+        // Just need to trigger the client handler task to clean up its shit
+        set_client_state(CLIENT_STA_NOT_CONN );
+        close(client.socket);
+        close(client.listen_sock);
 
-        // client_set_state(CLIENT_STA_NOT_CONN);
     }
     else
     {
