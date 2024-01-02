@@ -435,7 +435,8 @@ static void launch_client_handler_task(void)
 
 //*****************************************************************************
 // Wifi Event Loop Handler -> Handles action at the AP/STA level with regards
-// to the client
+// to the client. We also have the functions for starting and stopping the 
+// SoC AP
 //*****************************************************************************
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -467,6 +468,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     {
         ESP_LOGI(TAG, "Unhandled WIFI event");
     }
+}
+
+static void launch_soc_ap(void)
+{
+
 }
 
 //*****************************************************************************
@@ -1012,7 +1018,7 @@ void lcd_dump_ap(uint8_t i, uint8_t* line_counter)
     line_buff[1] = (char) 0;
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-}
+}push_to_line_buffer(1, line);
 
 void ui_scan_ap_cb(uint8_t i)
 {
@@ -1068,7 +1074,18 @@ static void report_num_macs_cb(void* args)
     char line[20];
     snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
     push_to_line_buffer(1, line);
-    update_line(1);
+    snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
+    push_to_line_buffer(2, line);
+    if(eapol_pkts_written_out)
+    {
+        push_to_line_buffer(3, "Handshake Captured");
+    }
+    else
+    {
+        push_to_line_buffer(3, "");
+    }
+
+    update_display();
 }
 
 static void start_report_num_macs_timer(void)
@@ -1193,8 +1210,11 @@ static void ui_scan_mac_cb(uint8_t index)
         push_to_line_buffer(0, line);
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
         push_to_line_buffer(1, line);
-        push_to_line_buffer(2, "");
+        snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
+        push_to_line_buffer(2, line);
         push_to_line_buffer(3, "");
+        
+        
         update_display();
 
         start_report_num_macs_timer();
@@ -1296,7 +1316,8 @@ static void ui_scan_mac_cb(uint8_t index)
         push_to_line_buffer(0, line);
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
         push_to_line_buffer(1, line);
-        push_to_line_buffer(2, "");
+        snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
+        push_to_line_buffer(2, line);
         push_to_line_buffer(3, "");
         update_display();
 
