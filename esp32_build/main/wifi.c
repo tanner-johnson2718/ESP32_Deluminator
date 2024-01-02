@@ -471,6 +471,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 }
 
 //*****************************************************************************
+// Deauth sending
+//*****************************************************************************
+
+//*****************************************************************************
 // General Purpose Timer - We provide this as a quick way for UI and REPL cmds
 // to register polling output to their respective medium.
 //*****************************************************************************
