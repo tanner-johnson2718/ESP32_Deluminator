@@ -88,9 +88,9 @@ Below we look at a very very small subset of the packet and their contents as it
 * The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
 * To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
 
-## Authentication
+## Association Request and Response
 
-## Deauthentication
+## Authentication Deauthentication
 
 ## WPA2 EAPOL Frames
 

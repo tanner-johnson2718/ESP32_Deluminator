@@ -1281,15 +1281,17 @@ static void ui_scan_mac_cb(uint8_t index)
         selecting_target_mac = 0;
         assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 
+        
         lock_cursor();
         home_screen_pos();
+        set_cursor(3);
         strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
         push_to_line_buffer(0, line);
         snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(active_mac_target_ap)[0], get_nth_mac(active_mac_target_ap)[1], get_nth_mac(active_mac_target_ap)[2],get_nth_mac(active_mac_target_ap)[3],get_nth_mac(active_mac_target_ap)[4],get_nth_mac(active_mac_target_ap)[5]);
         push_to_line_buffer(1, line);
         snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(active_mac_target_ap));
         push_to_line_buffer(2, line);
-        push_to_line_buffer(3, "");
+        push_to_line_buffer(3, "-----> PWN <------");
         update_display();
 
         start_report_rssi_timer();
@@ -1407,5 +1409,5 @@ void register_wifi(void)
 void ui_add_wifi(void)
 {
     add_ui_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini);
-    add_ui_cmd("Scan MAC", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini);
+    add_ui_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini);
 }

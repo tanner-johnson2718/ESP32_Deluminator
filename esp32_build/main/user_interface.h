@@ -40,3 +40,4 @@ void home_screen_pos(void);
 // Dont allow the cursor to move
 void lock_cursor(void);
 void unlock_cursor(void);
+void set_cursor(uint8_t i);

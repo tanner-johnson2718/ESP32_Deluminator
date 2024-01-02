@@ -423,3 +423,20 @@ void unlock_cursor(void)
 {
     cursor_locked = 0;
 }
+
+void set_cursor(uint8_t i)
+{
+    if(in_menu && i >= MAX_NUM_UI_CMDS)
+    {
+        ESP_LOGE(TAG, "tried to set cursor out of range");
+        return;
+    }
+
+    if(!in_menu && i >= MAX_UI_LOG_LINES)
+    {
+        ESP_LOGE(TAG, "tried to set cursor out of range");
+        return;
+    }
+    
+    cursor_pos_on_screen = i;
+}
