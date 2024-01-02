@@ -62,10 +62,21 @@ static SemaphoreHandle_t active_mac_list_lock;
 
 // We allocate a single buffer to store a single WPA2 handshake. When scanning
 // for handshakes, we have a target AP which means we only need one handshake
-// to crack that AP. Moreover, we call clear active macs before and after we
-// start a new scan which flushes the full eapol packets to flash mem.
+// to crack that AP. When all packets have been found we flush them to disk.
+// We also double check that if we have a good handshake that we do not clear
+// the in mem buffer unless its been flushed to disk. The in ram buffer is as
+// follows:
+//
+// |-----------|-----------|---------|---------|---------|---------|
+// | Assoc Req | Assoc Res | EAPOL 1 | EAPOL 2 | EAPOL 3 | EAPOL 4 |
+// |-----------|-----------|---------|---------|---------|---------|
+// 
+// Each of the 6 packet slots gets a 256 buffer. If the packet is smaller we
+// just pad the rest as we maintain the lengths of each packet. When dumping to
+// disk and sending over network the lengths are written first, fitting in a 
+// 2 byte integer, followed by the packet data with no padding.
 #define EAPOL_MAX_PKT_LEN 256
-#define EAPOL_NUM_PKTS    4
+#define EAPOL_NUM_PKTS    6
 #define EAPOl_SEMA_TIMEOUT_MS 10
 static uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
 static uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
@@ -677,6 +688,8 @@ static void clear_active_mac_list(void)
     eapol_pkt_lens[1] = 0;
     eapol_pkt_lens[2] = 0;
     eapol_pkt_lens[3] = 0;
+    eapol_pkt_lens[4] = 0;
+    eapol_pkt_lens[5] = 0;
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
     ESP_LOGI(TAG, "Active MAC List Cleared");
 }
@@ -722,59 +735,88 @@ static inline uint8_t get_from_ds(uint8_t* pkt)
     return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
 }
 
-// -1 if not eapol, else packet nume in handshake
+static inline uint8_t get_type(uint8_t* pkt)
+{
+    return (pkt[0] & 0x0c) >> 2;
+}
+
+static inline uint8_t get_subtype(uint8_t* pkt)
+{
+    return (pkt[0] >> 4) & 0x0F;
+}
+
 static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
 {
+    uint8_t num = 255;
+
+    if(get_type(p) == 0 && get_subtype(p) == 0)
+    {
+        // assoc request
+        num = 0;
+    }
+
+    if(get_type(p) == 0 && get_subtype(p) == 1)
+    {
+        // assoc response
+        num = 1;
+    }
+
 
     if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
     {
-        uint8_t num = 0;
+        // eapol
         int16_t s = get_seq_num(p, len);
         uint8_t to = get_to_ds(p);
         uint8_t from = get_from_ds(p);
 
-        if     (s == 0 && to == 0 && from == 1) { num = 0; }
-        else if(s == 0 && to == 1 && from == 0) { num = 1; }
-        else if(s == 1 && to == 0 && from == 1) { num = 2; }
-        else if(s == 1 && to == 1 && from == 0) { num = 3; }
+        if     (s == 0 && to == 0 && from == 1) { num = 2; }
+        else if(s == 0 && to == 1 && from == 0) { num = 3; }
+        else if(s == 1 && to == 0 && from == 1) { num = 4; }
+        else if(s == 1 && to == 1 && from == 0) { num = 5; }
         else
         {
             ESP_LOGE(TAG, "WAAAHHH -> seq=%d   to_ds=%d   from_ds=%d", s, to, from);
             return;
         }
+    }
 
-        ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d/4)", ap_info[active_mac_target_ap].ssid, num+1);
+    if(num > 5)
+    {
+        return;
+    }
 
-        if(!xSemaphoreTake(eapol_lock, EAPOl_SEMA_TIMEOUT_MS / portTICK_PERIOD_MS))
-        {
-            ESP_LOGE(TAG, "BAD VERY BAD .. EAPOL lock time out on handshake pkt %d/4 ... dropping pkt", num+1);
-            return;
-        }
+    ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d)", ap_info[active_mac_target_ap].ssid, num);
 
-        if(len >= EAPOL_MAX_PKT_LEN)
-        {
-            ESP_LOGE(TAG, "ERROR EAPOL packet too long");
-            assert(xSemaphoreGive(eapol_lock));
-        }
+    if(!xSemaphoreTake(eapol_lock, EAPOl_SEMA_TIMEOUT_MS / portTICK_PERIOD_MS))
+    {
+        ESP_LOGE(TAG, "BAD VERY BAD .. EAPOL lock time out on handshake pkt %d ... dropping pkt", num);
+        return;
+    }
 
-        if(eapol_pkt_lens[num] == 0)
-        {
-            eapol_pkt_lens[num] = len;
-            memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
-            ++eapol_pkts_captured;
-        }
-        else
-        {
-            ESP_LOGI(TAG, "Recieved a duplicate eapol pkt %d - possibly observed partial handshake", num+1);
-        }
-
-        if(eapol_pkts_captured == EAPOL_NUM_PKTS && eapol_pkts_written_out == 0)
-        {
-            eapol_dump_to_disk();
-        }
-
+    if(len >= EAPOL_MAX_PKT_LEN)
+    {
+        ESP_LOGE(TAG, "ERROR EAPOL packet too long");
         assert(xSemaphoreGive(eapol_lock));
     }
+
+    if(eapol_pkt_lens[num] == 0)
+    {
+        eapol_pkt_lens[num] = len;
+        memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
+        ++eapol_pkts_captured;
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Recieved a duplicate eapol pkt %d - possibly observed partial handshake", num);
+    }
+
+    if(eapol_pkts_captured == EAPOL_NUM_PKTS && eapol_pkts_written_out == 0)
+    {
+        eapol_dump_to_disk();
+    }
+
+    assert(xSemaphoreGive(eapol_lock));
+    
 }
 
 static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)

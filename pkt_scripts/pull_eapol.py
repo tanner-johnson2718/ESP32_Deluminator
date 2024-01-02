@@ -49,27 +49,27 @@ for bstr in files:
     l1 = int(data[2]) + (int(data[3]) << 8)
     l2 = int(data[4]) + (int(data[5]) << 8)
     l3 = int(data[6]) + (int(data[7]) << 8)
+    l4 = int(data[8]) + (int(data[9]) << 8)
+    l5 = int(data[10]) + (int(data[11]) << 8)
 
-    s0 = 8
+    s0 = 12
     s1 = s0 + l0
     s2 = s1 + l1
     s3 = s2 + l2
+    s4 = s3 + l3
+    s5 = s4 + l4
 
     p0 = data[s0:(s0+l0)]
     p1 = data[s1:(s1+l1)]
     p2 = data[s2:(s2+l2)]
     p3 = data[s3:(s3+l3)]
-
-    print(p0)
-    print()
-    print(p1)
-    print()
-    print(p2)
-    print()
-    print(p3)
+    p4 = data[s4:(s4+l4)]
+    p5 = data[s5:(s5+l5)]
 
     print("Writing to test.pcap")
     wrpcap('test.pcap', Dot11(p0), append=True)
     wrpcap('test.pcap', Dot11(p1), append=True)
     wrpcap('test.pcap', Dot11(p2), append=True)
     wrpcap('test.pcap', Dot11(p3), append=True)
+    wrpcap('test.pcap', Dot11(p4), append=True)
+    wrpcap('test.pcap', Dot11(p5), append=True)
