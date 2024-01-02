@@ -70,6 +70,7 @@ static SemaphoreHandle_t active_mac_list_lock;
 static uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
 static uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
 static uint8_t eapol_pkts_captured = 0;
+static uint8_t eapol_pkts_written_out = 0;
 static SemaphoreHandle_t eapol_lock;
 
 // We maintain a single timer to be used as a "poll n dump" function ie every
@@ -510,6 +511,8 @@ static void update_ap_info()
         ap_count = DEFAULT_SCAN_LIST_SIZE;
     }
 
+    ESP_ERROR_CHECK(esp_wifi_clear_ap_list());
+
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
 }
 
@@ -649,6 +652,7 @@ static void eapol_dump_to_disk(void)
     
     fclose(f);
     ESP_LOGI(TAG, "Write out of EAPOL pkts successful!");
+    eapol_pkts_written_out = 1;
 
 }
 
@@ -660,8 +664,7 @@ static void clear_active_mac_list(void)
         return;
     }
 
-    
-    if(eapol_pkts_captured == EAPOL_NUM_PKTS)
+    if(eapol_pkts_captured == EAPOL_NUM_PKTS && eapol_pkts_written_out == 0)
     {
         eapol_dump_to_disk();
     }
@@ -669,6 +672,7 @@ static void clear_active_mac_list(void)
     active_mac_list_len = 0;
     active_mac_target_ap = -1;
     eapol_pkts_captured = 0;
+    eapol_pkts_written_out = 0;
     eapol_pkt_lens[0] = 0;
     eapol_pkt_lens[1] = 0;
     eapol_pkt_lens[2] = 0;
@@ -753,12 +757,23 @@ static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
             assert(xSemaphoreGive(eapol_lock));
         }
 
-        eapol_pkt_lens[num] = len;
-        memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
-        ++eapol_pkts_captured;
+        if(eapol_pkt_lens[num] == 0)
+        {
+            eapol_pkt_lens[num] = len;
+            memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
+            ++eapol_pkts_captured;
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Recieved a duplicate eapol pkt %d - possibly observed partial handshake", num+1);
+        }
+
+        if(eapol_pkts_captured == EAPOL_NUM_PKTS && eapol_pkts_written_out == 0)
+        {
+            eapol_dump_to_disk();
+        }
 
         assert(xSemaphoreGive(eapol_lock));
-
     }
 }
 
@@ -828,11 +843,6 @@ static void kill_pkt_sniffer(void)
 
     ESP_LOGI(TAG, "Pkt Sniffer Killed");
 }
-
-
-//*****************************************************************************
-// Server??
-//*****************************************************************************
 
 //*****************************************************************************
 // REPL SCAN AP CMD
