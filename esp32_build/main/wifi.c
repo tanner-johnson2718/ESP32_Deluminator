@@ -641,7 +641,7 @@ static void eapol_dump_to_disk(void)
     uint8_t i;
     for(i = 0; i < EAPOL_NUM_PKTS; ++i)
     {
-        num_written = fwrite(eapol_buffer, 1, eapol_pkt_lens[i], f);
+        num_written = fwrite(eapol_buffer + i*EAPOL_MAX_PKT_LEN, 1, eapol_pkt_lens[i], f);
         if(num_written != eapol_pkt_lens[i])
         {
             ESP_LOGE(TAG, "Failed to write EAPOL %d Pkt (%d / %d)", i, num_written, eapol_pkt_lens[i]);
@@ -1315,7 +1315,7 @@ void init_wifi(void)
             .max_connection = EXAMPLE_MAX_STA_CONN,
             .authmode = WIFI_AUTH_WPA2_PSK,
             .pmf_cfg = {
-                    .required = true,
+                    .required = false,
             },
         },
     };
