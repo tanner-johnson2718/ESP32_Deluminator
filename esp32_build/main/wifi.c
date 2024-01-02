@@ -470,11 +470,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-static void launch_soc_ap(void)
-{
-
-}
-
 //*****************************************************************************
 // General Purpose Timer - We provide this as a quick way for UI and REPL cmds
 // to register polling output to their respective medium.
@@ -1018,7 +1013,7 @@ void lcd_dump_ap(uint8_t i, uint8_t* line_counter)
     line_buff[1] = (char) 0;
     push_to_line_buffer(*line_counter, line_buff);
     (*line_counter)++;
-}push_to_line_buffer(1, line);
+}
 
 void ui_scan_ap_cb(uint8_t i)
 {
