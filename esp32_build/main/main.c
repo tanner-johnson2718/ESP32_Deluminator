@@ -25,7 +25,11 @@ void app_main(void)
     init_wifi();
 
     /* Register repl commands */
-    register_user_interface();
+    register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
+    register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
+    register_no_arg_cmd("press", "Simulate short press", &do_press);
+    register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
+
     register_misc_cmds();
     register_flash();
     register_wifi();
@@ -33,6 +37,5 @@ void app_main(void)
     // UI add cmds
     ui_add_wifi();
 
-    start_ui();
     start_repl();  // no return
 }

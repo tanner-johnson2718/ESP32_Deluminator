@@ -1,0 +1,43 @@
+menu "HD44780 LCD Configuration"
+    config LCD_I2C_SPEED
+        int "i2c speed"
+        range 1000 100000
+        default 50000
+        help
+            The speed of the i2c bus managing the LCD
+
+    config LCD_SDA_PIN
+        int "LCD SDA Pin"
+        range 1 100
+        default 25
+        help
+            GPIO Pin for which the i2c LCD SDA pin is connected
+
+    config LCD_SCL_PIN
+        int "LCD SCL Pin"
+        range 1 100
+        default 26
+        help
+            GPIO Pin for which the i2c LCD SCL pin is connected
+
+    config LCD_I2C_ADDR
+        int "LCD i2c addr"
+        range 1 100
+        default 39
+        help
+            The I2C addr of the LCD's i2c io expander
+
+    config LCD_COLS
+        int "Number of columns on the LCD"
+        range 10 40
+        default 20
+        help
+            Number of columns on the LCD
+
+    config LCD_ROWS
+        int "Number of row on the LCD"
+        range 1 10
+        default 4
+        help
+            Number of row on the LCD
+endmenu

@@ -2,20 +2,34 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
+
 #include "esp_system.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "repl.h"
+#include "freertos/semphr.h"
+
 #include "user_interface.h"
-#include "lcd.h"
+#include "HD44780.h"
 #include "encoder.h"
-#include "conf.h"
+
+#define LCD_ADDR 0x27
+#define LCD_COLS 20
+#define LCD_ROWS 4
+
+#define MAX_NUM_UI_CMDS 32
+#define MAX_UI_LOG_LINES 128
+#define UI_EVENT_Q_SIZE 32
+#define UI_EVENT_HANDLER_PRIO 10
+
+#define BUTTON_PIN 33
+#define ROT_A_PIN 32
+#define ROT_B_PIN 27
 
 static const char* TAG = "UI";
 static QueueHandle_t ui_event_q;
 static rotary_encoder_t re = {0};
+static SemaphoreHandle_t lcd_lock;
 
 static char* cmd_list;
 static command_cb_t* init_cb_list;
@@ -197,7 +211,7 @@ static void rot_right(void)
 }
 
 //*****************************************************************************
-// UI Interaction Private functions
+// Test Functions to export to a repl interface
 //*****************************************************************************
 
 static char* get_cmd_str(uint8_t n)
@@ -211,25 +225,25 @@ static char* get_cmd_str(uint8_t n)
     return NULL;
 }
 
-static int do_rot_l(int argc, char** argv)
+int do_rot_l(int argc, char** argv)
 {
     rot_left();
     return 0;
 }
 
-static int do_rot_r(int argc, char** argv)
+int do_rot_r(int argc, char** argv)
 {
     rot_right();
     return 0;
 }
 
-static int do_press(int argc, char** argv)
+int do_press(int argc, char** argv)
 {
     button_short_press();
     return 0;
 }
 
-static int do_long_press(int argc, char** argv)
+int do_long_press(int argc, char** argv)
 {
     button_long_press();
     return 0;
@@ -253,7 +267,7 @@ void init_user_interface()
     ESP_ERROR_CHECK(rotary_encoder_init(ui_event_q));
     ESP_ERROR_CHECK(rotary_encoder_add(&re));
     
-    init_lcd();
+    LCD_init();
 
     cmd_list = malloc(MAX_NUM_UI_CMDS * LCD_COLS);
     current_log = malloc(MAX_UI_LOG_LINES * LCD_COLS);
@@ -269,14 +283,15 @@ void init_user_interface()
 
     memset(cmd_list, 0, MAX_NUM_UI_CMDS * LCD_COLS);
     memset(current_log, 0, MAX_UI_LOG_LINES * LCD_COLS);
-}
 
-void register_user_interface(void)
-{
-    register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
-    register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
-    register_no_arg_cmd("press", "Simulate short press", &do_press);
-    register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
+    in_menu = 1;
+    in_log_cmd_index = 0;
+    cursor_pos_on_screen = 0;
+    index_of_first_line = 0;
+    cursor_locked = 0;
+
+    lcd_lock = xSemaphoreCreateBinary();
+    assert(xSemaphoreGive(lcd_lock) == pdTRUE);
 }
 
 void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini)
@@ -300,16 +315,18 @@ void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, co
     on_press_cb_list[num_cmds] = on_press_cb;
     fini_cb_list[num_cmds] = cmd_fini;
     num_cmds++;
-}
 
-// Call this once  all ui cmds have been added
-void start_ui(void)
-{
-    in_menu = 1;
-    in_log_cmd_index = 0;
-    cursor_pos_on_screen = 0;
-    index_of_first_line = 0;
-    update_display();
+    ESP_LOGI(TAG, "UI Command %s registered", name);
+
+    if(in_menu)
+    {
+        home_screen_pos();
+        update_display();
+    }
+    else
+    {
+        ESP_LOGE(TAG, "IN add ui cmd - weird that ui cmd added when not in menu");
+    }
 }
 
 void push_to_line_buffer(uint8_t line_num, char* line)
@@ -349,6 +366,11 @@ static void _update_line(uint8_t row, uint8_t i, uint8_t max)
 {
     char* line;
 
+    if(!xSemaphoreTake(lcd_lock, 0))
+    {
+        return;
+    }
+
     LCD_setCursor(0, row);
     if(i == cursor_pos_on_screen + index_of_first_line)
     {
@@ -367,14 +389,23 @@ static void _update_line(uint8_t row, uint8_t i, uint8_t max)
 
         LCD_writeStr(line);
     }
+
+    assert(xSemaphoreGive(lcd_lock));
 }
 
 // based on the current cursor pos and index in either the menu or line buff,
 // dump contents of the buffer to the screen
 void update_display(void)
 {
+    if(!xSemaphoreTake(lcd_lock, 0))
+    {
+        return;
+    }
+
     LCD_home();
     LCD_clearScreen();
+
+    assert(xSemaphoreGive(lcd_lock));
 
     uint8_t max = 0;
     if(in_menu){ max = num_cmds; }

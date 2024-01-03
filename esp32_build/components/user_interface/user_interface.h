@@ -16,9 +16,12 @@
 typedef void (*command_cb_t)(void);
 typedef void (*on_press_cb_t)(uint8_t line_index);
 
+//*****************************************************************************
+// init_user_interface:
+//*****************************************************************************
 void init_user_interface(void);
-void register_user_interface(void);
-void start_ui(void);
+
+
 void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini);
 
 // Setters and getters for zee line buff
@@ -41,3 +44,13 @@ void home_screen_pos(void);
 void lock_cursor(void);
 void unlock_cursor(void);
 void set_cursor(uint8_t i);
+
+//*****************************************************************************
+// Test driver functions to export to the REPL. All take in no args and always
+// succeed.
+//*****************************************************************************
+
+int do_rot_l(int argc, char** argv);      // Calls rot_left cb in ui driver
+int do_rot_r(int argc, char** argv);      // Calls rot_right cb in ui driver
+int do_press(int argc, char** argv);      // Calls short_press in ui driver
+int do_long_press(int argc, char** argv); // Calls long_press in ui driver

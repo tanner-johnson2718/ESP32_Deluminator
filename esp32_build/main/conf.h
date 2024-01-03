@@ -20,24 +20,6 @@
 #define MAX_HISTORY_LEN 4096
 
 //*****************************************************************************
-// UI Conf
-//*****************************************************************************
-
-#define SDA_PIN  25
-#define SCL_PIN  26
-#define BUTTON_PIN 33
-#define ROT_A_PIN 32
-#define ROT_B_PIN 27
-#define LCD_ADDR 0x27
-#define LCD_COLS 20
-#define LCD_ROWS 4
-#define I2C_CLK_SPEED 50000
-#define MAX_NUM_UI_CMDS 32
-#define MAX_UI_LOG_LINES 128
-#define UI_EVENT_Q_SIZE 32
-#define UI_EVENT_HANDLER_PRIO 10
-
-//*****************************************************************************
 // Wifi Conf
 //*****************************************************************************
 
