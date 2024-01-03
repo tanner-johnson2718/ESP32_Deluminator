@@ -7,7 +7,6 @@
 //      * replaced with `portTICK_PERIOD_MS`
 // * NOTE - Not reentrant nor thread safe. All access in a concurrent 
 //          environment needs to be guarded by CVs and Mutexes
-// * Also 
 
 #pragma once
 
