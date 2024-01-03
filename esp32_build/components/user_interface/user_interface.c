@@ -13,10 +13,6 @@
 #include "HD44780.h"
 #include "encoder.h"
 
-#define LCD_ADDR 0x27
-#define LCD_COLS 20
-#define LCD_ROWS 4
-
 #define MAX_NUM_UI_CMDS 32
 #define MAX_UI_LOG_LINES 128
 #define UI_EVENT_Q_SIZE 32

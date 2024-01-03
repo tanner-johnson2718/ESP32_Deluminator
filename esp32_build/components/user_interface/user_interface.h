@@ -17,10 +17,23 @@ typedef void (*command_cb_t)(void);
 typedef void (*on_press_cb_t)(uint8_t line_index);
 
 //*****************************************************************************
-// init_user_interface:
+// init_user_interface: To init the user interface a few high level tasks are
+//                      done
+//
+//  1) Malloc CMD list, the Line Buffer, and the call back lists. Note this
+//     could and ideally should statically allocated but one we are low on 
+//     static memory and two this introduces the possibility of having this
+//     component be nixed in the event we do not have an LCD or rotary
+//
+//  2) Create an even queue for rotoary encoder events and create a task to
+//     handle them
+//
+//  3) Init the LCD and the rotary encoder components
+//
+//  4) Reset the screen, home and cursor positions, etc.
+//
 //*****************************************************************************
 void init_user_interface(void);
-
 
 void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini);
 
