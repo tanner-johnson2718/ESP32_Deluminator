@@ -21,16 +21,23 @@
 // this event to the UI event Q which then wakes the UI event handler which
 // calls the corresponding state function handle i.e. short_press(), etc..
 
-//
-// That is in_menu or not. in_menu is the init state when booting. In this 
-// state we see a list commands or programs that we can run. When we click on a
-// command, we are in the !in_menu state. In this state we maintain a line
-// buffer and API functions for the called command to update whats on the 
-// screen. When a command is added to the ui it provides an ini, fini and cb
-// function. Ini inits and is called when the command is first launched. Every
-// Subsequent press of the button calls the provided cb. Holding the button
-// will bring you back to the menu and will call the commands fini function.
-
+// |---------|-------------------------|------------|-------------------------|
+// | in_menu |                         | In Command |                         |
+// |---------|                         |------------|                         |
+// |                                   |                                      |
+// |           CMD List                |                     Line Buff        |
+// |          |---------|       |-------------|             |----------|      |                                             
+// | Cursor-->|  cmd_0  |------>| Short Press |-- Cursor--->|  line_0  |---   |
+// |    ^     |  cmd_1  |       |  (CMD INI)  |             |  line_1  |  |   |
+// |    |     |  cmd_2  |       |-------------|             |  line_2  |  |   |
+// |    |     |  ...    |              |                    |    ...   |  |   |
+// |    |     |  cmd_n  |              |                    |  line_n  |  |   |
+// |    |     |---------|              |                    |----------|
+// |    |                        |------------|
+// |    |------------------------| Long Press |            |-------------| 
+// |                             | (CMD FINI) |            | Short Press |
+// |                             |------------|            |   (CMD CB)  |   
+// |                                                       |-------------|
 #pragma once
 
 #include <stdint.h>
