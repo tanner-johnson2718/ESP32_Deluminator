@@ -18,13 +18,43 @@
 
 static const char* TAG = "MAIN";
 
+//*****************************************************************************
+// The first main component of main is flash memory. To get an idea of how we
+// utilize flash memory in this application below is the current flash layout
+// although refer to paritions_example.csv for the most update reference:
+//
+// |--------------------------------------------------|
+// |        Addr Range     |           Desc           |
+// |-----------------------|--------------------------|
+// | 0x00_0000 - 0x00_0FFF |      All `0xFF`s         | 
+// | 0x00_1000 - 0x00_8FFF | Second Stage Boot loader | 
+// | 0x00_9000 - 0x00_AFFF |      Partition Table     | 
+// | 0x00_A000 - 0x00_AFFF |       Phy Init Data      |
+// | 0x00_B000 - 0x01_FFFF |             NVS          |
+// | 0x02_0000 - 0x11_FFFF |     Application image    |
+// | 0x12_0000 -     <end> |      SPIFFS parition     |
+// |--------------------------------------------------|
+//
+// The regions flash that our application interfaces with is NVS and SPIFFS. 
+// NVS is rather simple and allows us store simple key pairs in the NVS 
+// partition. The esp_wifi module requires it otherwise our code does not. The
+// SPIFFS is a SPI Flash File system. Is has a flat dir structure and no dirs
+// are allowed. Once inited, one can use the C standard Library functions to 
+// create, write, and read files from the system. The main files we will store
+// are:
+//
+//     * /spiffs/history.txt - REPL command line history
+//     * /spiffs/event.txt   - Event Loop Debug info
+//     * /spiffs/<ssid>.pkt  - Packet Dump of WPA2 handshakes
+//
+//*****************************************************************************
 
 #define MOUNT_PATH CONFIG_SPIFFS_MOUNT_PATH
 #define MAX_FILES CONFIG_SPIFFS_MAX_FILES
-#define PROMPT_STR "$~>"
-#define MAX_CMD_LINE_LEN 80
+#define PROMPT_STR CONFIG_REPL_PROMPT_STR
+#define MAX_CMD_LINE_LEN CONFIG_MAX_CMD_LINE_LEN 
 #define HISTORY_PATH MOUNT_PATH "/history.txt"
-#define MAX_HISTORY_LEN 4096
+#define MAX_HISTORY_LEN CONFIG_MAX_HISTORY_LEN
 
 static void initialize_filesystem(void);
 static void initialize_nvs(void);
@@ -105,6 +135,55 @@ void app_main(void)
 
     ESP_LOGI(TAG, "REPL Starting. Saving history too %s", HISTORY_PATH);
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
+}
+
+//*****************************************************************************
+// Init NVS and SPIFFS
+//*****************************************************************************
+
+static void initialize_filesystem(void)
+{
+    ESP_LOGI(TAG, "Initializing SPIFFS -> %s", MOUNT_PATH);
+
+    esp_vfs_spiffs_conf_t _conf = {
+      .base_path = MOUNT_PATH,
+      .partition_label = NULL,
+      .max_files = MAX_FILES,
+      .format_if_mount_failed = true
+    };
+
+    esp_err_t ret = esp_vfs_spiffs_register(&_conf);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount or format filesystem");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGE(TAG, "Failed to find SPIFFS partition");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
+        }
+        return;
+    }
+
+    size_t total = 0, used = 0;
+    ret = esp_spiffs_info(_conf.partition_label, &total, &used);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s). Formatting...", esp_err_to_name(ret));
+        esp_spiffs_format(_conf.partition_label);
+        return;
+    } else {
+        ESP_LOGI(TAG, "%s mounted on partition size: total: %d, used: %d",MOUNT_PATH, total, used);
+    }
+}
+
+static void initialize_nvs(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK( nvs_flash_erase() );
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
 }
 
 //*****************************************************************************
@@ -357,53 +436,4 @@ static int do_restart(int argc, char **argv)
 {
     ESP_LOGI(TAG, "Restarting");
     esp_restart();
-}
-
-//*****************************************************************************
-// Init NVS and SPIFFS
-//*****************************************************************************
-
-static void initialize_filesystem(void)
-{
-    ESP_LOGI(TAG, "Initializing SPIFFS -> %s", MOUNT_PATH);
-
-    esp_vfs_spiffs_conf_t _conf = {
-      .base_path = MOUNT_PATH,
-      .partition_label = NULL,
-      .max_files = MAX_FILES,
-      .format_if_mount_failed = true
-    };
-
-    esp_err_t ret = esp_vfs_spiffs_register(&_conf);
-
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount or format filesystem");
-        } else if (ret == ESP_ERR_NOT_FOUND) {
-            ESP_LOGE(TAG, "Failed to find SPIFFS partition");
-        } else {
-            ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
-        }
-        return;
-    }
-
-    size_t total = 0, used = 0;
-    ret = esp_spiffs_info(_conf.partition_label, &total, &used);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s). Formatting...", esp_err_to_name(ret));
-        esp_spiffs_format(_conf.partition_label);
-        return;
-    } else {
-        ESP_LOGI(TAG, "%s mounted on partition size: total: %d, used: %d",MOUNT_PATH, total, used);
-    }
-}
-
-static void initialize_nvs(void)
-{
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK( nvs_flash_erase() );
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(err);
 }

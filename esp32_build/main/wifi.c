@@ -6,7 +6,6 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
-#include "esp_console.h"
 #include "esp_event.h"
 #include "esp_timer.h"
 #include "esp_mac.h"
@@ -17,11 +16,8 @@
 #include "wifi.h"
 #include "user_interface.h"
 #include "wsl_bypasser.h"
+#include "tcp_file_server.h"
 
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-#include <lwip/netdb.h>
 
 #define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
@@ -29,9 +25,6 @@
 #define EXAMPLE_ESP_WIFI_CHANNEL 1
 #define EXAMPLE_ESP_WIFI_PASS "abcd1234"
 #define EXAMPLE_MAX_STA_CONN 1
-#define TCP_SERVER_PRIO 5
-#define TCP_SERVER_PORT 420
-#define TCP_SERVER_IP "192.168.4.1"
 
 #define MAC_LEN 6
 #define MAX_SSID_LEN 32
@@ -105,343 +98,8 @@ static esp_timer_create_args_t gp_timer_args =
 };
 static uint8_t gp_timer_running = 0;
 
-//*****************************************************************************
-// We maintain an access point that we call the SoC AP to differentiate it
-// from our ap list above that we get scanning. We only allow one station to
-// connect at a time.
-//
-// SoC AP Funcs - The SoC AP we host has a handler pegged to the default event
-// loop. When a station connects, this starts the state machine:
-//
-// |-------------|    |----------------------------|    |---------------------|
-// | STA Connect |--->| Launch Client Handler Task |--->| Open Listening Port |
-// |-------------|    |----------------------------|    |---------------------|
-//                                                              |
-//                                                              |
-//                                                              |
-//                                                              V
-// |-----------------|    |----------------------|    |---------------------|
-// | Fufil File Reqs |<---| Present Stored Files |<---|    Accept Conn      |
-// |-----------------|    |----------------------|    |---------------------|
-//          |                          ^                         ^ 
-//          |                          |                         |
-//          |---------------------------                         |
-//          V                                                    |
-// |--------------------------|                                  |
-// | Handle Client Disconnect |----------------------------------- 
-// |--------------------------|
-//
-//
-// Failures) If anything happens in the first row i.e. we cant launch the conn 
-//           handler or can't open the listening port, this indicates very bad 
-//           system / config failures beyond our control. Assert it to be
-//           successful and log n crash in failure.
-//
-//           Once the Listening port is opened, failures can be handled by the
-//           catch all of "handle client disconnect" that frees up any client
-//           resources and returns to the listening state.
-//
-//           A STA disconnect event will not interrupt the starting of the
-//           client handler task or the starting of the listening port. Once
-//           the listening port is open, a client disconnect will trigger a
-//           graceful shutdown of the client handle thread and the listening
-//           port.
-//*****************************************************************************
-
-//*****************************************************************************
-// Client Data Structure Accessor Functions
-//*****************************************************************************
-enum client_state
-{
-    CLIENT_STA_NOT_CONN,
-    CLIENT_STA_CONN,
-    CLIENT_WAITING_ON_TCP_CONN,
-    CLIENT_TCP_CONN
-};
-
-static const char* client_state_strs[] = 
-{
-    "Client Station Not Connected",
-    "Client Station Connected to SoC AP",
-    "Waiting for client to connect to TCP Server",
-    "Client connected to TCP server"
-};
-
-struct client
-{
-    enum client_state state;
-    uint8_t mac[MAC_LEN];
-    uint8_t  id;
-    TaskHandle_t handler_task;
-    int socket;
-    int listen_sock;
-    char ip_addr[16];
-} typedef client_t;
-
-static client_t client = {0};
-
-static enum client_state get_client_state(void)
-{
-    return client.state;
-}
-
-static void set_client_state(enum client_state s)
-{
-    ESP_LOGI(TAG, "%s", client_state_strs[(uint8_t) s]);
-    client.state = s;
-}
-
-static uint8_t client_sta_is_conn(void)
-{
-    return ((uint8_t) get_client_state()) > 0;
-}
-
-static void set_client_soc_ap_id(uint8_t id)
-{
-    client.id = id;
-}
-
-static uint8_t get_client_soc_ap_id(void)
-{
-    return client.id;
-}
-
-static void set_client_mac(uint8_t* mac)
-{
-    memcpy(client.mac, mac, MAC_LEN);
-}
-
-static uint8_t* get_client_mac(void)
-{
-    return client.mac;
-}
-
-static void deauth_client(void)
-{
-    ESP_ERROR_CHECK(esp_wifi_deauth_sta(client.id));
-    ESP_LOGI(TAG, "station "MACSTR" kicked, AID = %d", MAC2STR(get_client_mac()), get_client_soc_ap_id());  
-}
-
-//*****************************************************************************
-// TCP Server Logic
-//*****************************************************************************
-
-// returns a 1 if the error caused should reset the tcp connection
-static uint8_t handle_file_req(void)
-{
-    uint8_t rx_buffer[33];
-    int len = recv(client.socket, rx_buffer, sizeof(rx_buffer) - 1, 0);
-    
-    if(len < 0)
-    {
-        ESP_LOGE(TAG, "In handle_file_req - error recv");
-        return 1;
-    }
-    else if(len == 0)
-    {
-        ESP_LOGI(TAG, "In handle_file_req - session closed");
-        return 1;
-    }
-    
-    rx_buffer[len] = 0;
-    if((char) rx_buffer[len-1] == '\n')
-    {
-        rx_buffer[len-1] = 0;
-    }
-
-    DIR *d;
-    struct dirent *dir;
-
-    d = opendir(MOUNT_PATH);
-    if(d)
-    {
-        while((dir = readdir(d))!=NULL)
-        {
-            if(strcmp(dir->d_name, (char*) rx_buffer) == 0)
-            {
-                break;
-            }
-        }
-
-        closedir(d);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
-        return 0;
-    }
-
-    if(dir == NULL)
-    {
-        ESP_LOGE(TAG, "In handle_file_req - requested non existent file %s", rx_buffer);
-        return 0;
-    }
-
-    // Send file
-    ESP_LOGI(TAG, "File %s requested", rx_buffer);
-    uint8_t tx_buffer[256];
-    char path[33];
-    sprintf(path, "%s/%.22s", MOUNT_PATH, rx_buffer);
-    FILE* f = fopen(path, "r");
-
-    if(!f)
-    {
-        ESP_LOGE(TAG, "In handle_file_req - Failed to open %s", path);
-        return 0;
-    }
-
-    size_t num_read = 0;
-    int still_sending = 1;
-    while(still_sending)
-    {
-        num_read = fread(tx_buffer, 1, 256, f);
-        if(num_read < 256)
-        {
-            still_sending = 0;
-        }
-
-        ESP_LOGI(TAG, "Sending %d bytes ...", num_read);
-        if( send(client.socket, tx_buffer, num_read, 0) < 1)
-        {
-            ESP_LOGE(TAG, "In handle_file_req - Failed to send file data");
-            break;
-        }
-    }
-
-    fclose(f);
-    return 0;
-}
-
-// Returns a 1 if the error caused should reset the tcp connection
-static uint8_t present_files(void)
-{
-    DIR *d;
-    struct dirent *dir;
-
-    d = opendir(MOUNT_PATH);
-    if(d)
-    {
-        while((dir = readdir(d))!=NULL)
-        {
-            uint8_t len = strlen(dir->d_name);
-            int written =send(client.socket, dir->d_name, len, 0);
-            if(written < 0)
-            {
-                ESP_LOGE(TAG, "In present Files - send error");
-                return 1;
-            }
-            
-
-            written = send(client.socket, "\n", 1, 0);
-            if(written < 0)
-            {
-                ESP_LOGE(TAG, "In present Files - send error");
-                return 1;
-            }
-
-            ESP_LOGI(TAG, "Successfully Presented file %s", dir->d_name);
-        }
-        closedir(d);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
-        return 1;
-    }
-
-    return 0;
-}
-
-// Init the listening socket, bind it to our static IP and port
-static void client_handler_task(void* args)
-{
-
-    client.listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-    if(client.listen_sock < 0)
-    {
-        ESP_LOGE(TAG, "Failed to open listening socket");
-        goto clean_up0;
-    }
-
-    int opt = 1;
-    setsockopt(client.listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    ESP_LOGI(TAG, "Listening Socket Created");
-
-    struct sockaddr_storage dest_addr;
-    struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-    dest_addr_ip4->sin_addr.s_addr = inet_addr(TCP_SERVER_IP);
-    dest_addr_ip4->sin_family = AF_INET;
-    dest_addr_ip4->sin_port = htons(TCP_SERVER_PORT);
-    int err = bind(client.listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    err |= listen(client.listen_sock, 1);
-    
-    if(err)
-    {
-        ESP_LOGE(TAG, "Failed to bind listening socket");
-        goto clean_up0;
-    }
-
-    ESP_LOGI(TAG, "Listening socket bound to %s:%d", TCP_SERVER_IP, TCP_SERVER_PORT);
-
-    while(client.state != CLIENT_STA_NOT_CONN)
-    {
-        struct sockaddr_in source_addr;
-        socklen_t addr_len = sizeof(source_addr);
-
-        set_client_state(CLIENT_WAITING_ON_TCP_CONN);
-
-        client.socket = accept(client.listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-        if (client.socket < 0) {
-            ESP_LOGE(TAG, "Unable to accept connection: %s", strerror(errno));
-            continue;
-        }
-
-        inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, client.ip_addr, 16);
-        set_client_state(CLIENT_TCP_CONN);
-        ESP_LOGI(TAG, "Client Connected %s - Starting Session", client.ip_addr);
-
-        while(client.state != CLIENT_STA_NOT_CONN)
-        {
-            if(present_files())
-            {
-                break;
-            }
-
-            if(handle_file_req())   // Generally block here
-            {
-                break;
-            }
-        }
-
-        // Clean up sesion resources
-        shutdown(client.socket, 0);
-        close(client.socket);
-    }
-
-    // Clean up listening socket resources including this task. We force the
-    // client to disconnect from the Soc AP here (if it that isnt what caused)
-    // us to get here.
-clean_up0:
-    close(client.listen_sock);
-    deauth_client();
-    set_client_state(CLIENT_STA_NOT_CONN);
-    ESP_LOGI(TAG, "Client Event Handler Task Exiting ...");
-    vTaskDelete(NULL);
-}
-
-static void launch_client_handler_task(void)
-{
-    memset(&client.handler_task, 0, sizeof(TaskHandle_t));
-    xTaskCreate(client_handler_task, "tcp_server", 4096, NULL, TCP_SERVER_PRIO, &client.handler_task);
-    
-    if(!client.handler_task)
-    {
-        ESP_LOGE(TAG,"Failed to start Client Handler Task");
-        // set_client_state(CLIENT_STA_CONN);
-    }
-
-    ESP_LOGI(TAG, "Client Handler Task Launched");
-}
+int8_t client_id = -1;
+uint8_t client_mac[MAC_LEN];
 
 //*****************************************************************************
 // Wifi Event Loop Handler -> Handles action at the AP/STA level with regards
@@ -456,12 +114,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         
-        // ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" with id=%d connected to SoC AP", MAC2STR(get_client_mac()), get_client_soc_ap_id());
 
-        set_client_mac(event->mac);
-        set_client_soc_ap_id(event->aid);
-        set_client_state(CLIENT_STA_CONN);
-        launch_client_handler_task();
+        client_id = event->aid;
+        memcpy(client_mac, event->mac, MAC_LEN);
+        ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" with id=%d connected to SoC AP", MAC2STR(client_mac), client_id);
+
+        launch_tcp_file_server(MOUNT_PATH);
         
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
     {
@@ -469,15 +127,24 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" Diconnect Event, AID=%d", MAC2STR(event->mac), event->aid);
 
         // Just need to trigger the client handler task to clean up its shit
-        set_client_state(CLIENT_STA_NOT_CONN );
-        close(client.socket);
-        close(client.listen_sock);
-
+        kill_tcp_file_server();
+        client_id = -1;
+        memset(client_mac, 0, MAC_LEN);
     }
     else
     {
         ESP_LOGI(TAG, "Unhandled WIFI event");
     }
+}
+
+//*****************************************************************************
+// Client STA handler code
+//*****************************************************************************
+
+static void deauth_client(void)
+{
+    ESP_ERROR_CHECK(esp_wifi_deauth_sta(client_id));
+        ESP_LOGI(TAG, "station "MACSTR" kicked, AID = %d", MAC2STR(client_mac), client_id);  
 }
 
 //*****************************************************************************
@@ -861,7 +528,7 @@ static void launch_pkt_sniffer()
         return;
     }
 
-    if(client_sta_is_conn())
+    if(client_id !=-1)
     {
         ESP_LOGI(TAG, "In launch_pkt_sniffer - deauthing client");
         deauth_client();
@@ -1322,9 +989,9 @@ static void ui_scan_mac_cb(uint8_t index)
         set_cursor(3);
         strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
         push_to_line_buffer(0, line);
-        snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(active_mac_target_ap)[0], get_nth_mac(active_mac_target_ap)[1], get_nth_mac(active_mac_target_ap)[2],get_nth_mac(active_mac_target_ap)[3],get_nth_mac(active_mac_target_ap)[4],get_nth_mac(active_mac_target_ap)[5]);
+        snprintf(line, 19, MACSTR, MAC2STR(get_nth_mac(target_mac)));
         push_to_line_buffer(1, line);
-        snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(active_mac_target_ap));
+        snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
         push_to_line_buffer(2, line);
         push_to_line_buffer(3, "-----> PWN <------");
         update_display();

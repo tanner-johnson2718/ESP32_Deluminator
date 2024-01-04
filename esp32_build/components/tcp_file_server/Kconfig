@@ -1,0 +1,15 @@
+menu "TCP File Server Config"
+
+    config TCP_SERVER_IP
+        string "IP for listening socket to bind to"
+        default "192.168.4.1"
+
+    config TCP_SERVER_PORT
+        int "Port for listening socekt to bind to"
+        default 420
+
+    config TCP_SERVER_PRIO
+        int "Priority of TCP Server Task"
+        default 5
+
+endmenu 
