@@ -13,10 +13,11 @@
 #include "HD44780.h"
 #include "encoder.h"
 
-#define MAX_NUM_UI_CMDS 32
-#define MAX_UI_LOG_LINES 128
-#define UI_EVENT_Q_SIZE 32
-#define UI_EVENT_HANDLER_PRIO 10
+#define MAX_NUM_UI_CMDS CONFIG_UI_NUM_CMDS
+#define MAX_UI_LOG_LINES CONFIG_UI_NUM_LINE_BUFF
+#define UI_EVENT_Q_SIZE CONFIG_UI_EVENT_Q_SIZE
+#define UI_EVENT_HANDLER_PRIO CONFIG_UI_EVENT_HNDLR_PRIO
+
 #define LCD_COLS CONFIG_LCD_COLS
 #define LCD_ROWS CONFIG_LCD_ROWS
 
@@ -259,9 +260,6 @@ void init_user_interface()
     assert(ui_event_q);
     ESP_LOGI(TAG, "UI Event Handler Launched");
 
-    re.pin_a = ROT_A_PIN;
-    re.pin_b = ROT_B_PIN;
-    re.pin_btn = BUTTON_PIN;
     ESP_ERROR_CHECK(rotary_encoder_init(ui_event_q));
     ESP_ERROR_CHECK(rotary_encoder_add(&re));
     

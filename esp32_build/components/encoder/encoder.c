@@ -42,10 +42,14 @@
 
 #define MUTEX_TIMEOUT 10
 
+#ifdef CONFIG_RE_BTN_PRESSED_LEVEL_0
 #define BTN_PRESSED_LEVEL 0
+#else
+#define BTN_PRESSED_LEVEL 1
+#endif
 
 static const char *TAG = "encoder";
-static rotary_encoder_t *encs[1] = { 0 };
+static rotary_encoder_t *encs[CONFIG_RE_MAX] = { 0 };
 static const int8_t valid_states[] = { 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0 };
 static SemaphoreHandle_t mutex;
 static QueueHandle_t _queue;
@@ -63,10 +67,10 @@ inline static void read_encoder(rotary_encoder_t *re)
     if (re->pin_btn < GPIO_NUM_MAX)
     do
     {
-        if (re->btn_state == RE_BTN_PRESSED && re->btn_pressed_time_us < 10000)
+        if (re->btn_state == RE_BTN_PRESSED && re->btn_pressed_time_us < CONFIG_RE_BTN_DEAD_TIME_US)
         {
             // Dead time
-            re->btn_pressed_time_us += 1000;
+            re->btn_pressed_time_us += CONFIG_RE_INTERVAL_US;
             break;
         }
 
@@ -83,9 +87,9 @@ inline static void read_encoder(rotary_encoder_t *re)
                 break;
             }
 
-            re->btn_pressed_time_us += 1000;
+            re->btn_pressed_time_us += CONFIG_RE_INTERVAL_US;
 
-            if (re->btn_state == RE_BTN_PRESSED && re->btn_pressed_time_us >= 1000000)
+            if (re->btn_state == RE_BTN_PRESSED && re->btn_pressed_time_us >= CONFIG_RE_BTN_LONG_PRESS_TIME_US)
             {
                 // Long press
                 re->btn_state = RE_BTN_LONG_PRESSED;
@@ -136,7 +140,7 @@ static void timer_handler(void *arg)
     if (!xSemaphoreTake(mutex, 0))
         return;
 
-    for (size_t i = 0; i < 1; i++)
+    for (size_t i = 0; i < CONFIG_RE_MAX; i++)
         if (encs[i])
             read_encoder(encs[i]);
 
@@ -165,14 +169,18 @@ esp_err_t rotary_encoder_init(QueueHandle_t queue)
     }
 
     CHECK(esp_timer_create(&timer_args, &timer));
-    CHECK(esp_timer_start_periodic(timer, 1000));
+    CHECK(esp_timer_start_periodic(timer, CONFIG_RE_INTERVAL_US));
 
-    ESP_LOGI(TAG, "Initialization complete, timer interval: %dms", 1000 / 1000);
+    ESP_LOGI(TAG, "Initialization complete, timer interval: %dms", CONFIG_RE_INTERVAL_US / 1000);
     return ESP_OK;
 }
 
 esp_err_t rotary_encoder_add(rotary_encoder_t *re)
 {
+    re->pin_a = CONFIG_RE_A_PIN;
+    re->pin_b = CONFIG_RE_B_PIN;
+    re->pin_btn = CONFIG_RE_BUTTON_PIN;
+    
     CHECK_ARG(re);
     if (!xSemaphoreTake(mutex, MUTEX_TIMEOUT))
     {
@@ -181,7 +189,7 @@ esp_err_t rotary_encoder_add(rotary_encoder_t *re)
     }
 
     bool ok = false;
-    for (size_t i = 0; i < 1; i++)
+    for (size_t i = 0; i < CONFIG_RE_MAX; i++)
         if (!encs[i])
         {
             re->index = i;
@@ -200,11 +208,17 @@ esp_err_t rotary_encoder_add(rotary_encoder_t *re)
     gpio_config_t io_conf;
     memset(&io_conf, 0, sizeof(gpio_config_t));
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
+    if (BTN_PRESSED_LEVEL == 0) {
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    } else {
+        io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+        io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    }
     io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask   = (1ULL << re->pin_a)  |
-                             (1ULL << re->pin_b)  |
-                             (1ULL << re->pin_btn);
+    io_conf.pin_bit_mask = GPIO_BIT(re->pin_a) | GPIO_BIT(re->pin_b);
+    if (re->pin_btn < GPIO_NUM_MAX)
+        io_conf.pin_bit_mask |= GPIO_BIT(re->pin_btn);
     CHECK(gpio_config(&io_conf));
 
     re->btn_state = RE_BTN_RELEASED;
@@ -225,7 +239,7 @@ esp_err_t rotary_encoder_remove(rotary_encoder_t *re)
         return ESP_ERR_INVALID_STATE;
     }
 
-    for (size_t i = 0; i < 1; i++)
+    for (size_t i = 0; i < CONFIG_RE_MAX; i++)
         if (encs[i] == re)
         {
             encs[i] = NULL;

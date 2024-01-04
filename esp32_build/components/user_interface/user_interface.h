@@ -20,24 +20,56 @@
 // When it rotary encoder driver deems that an event has occured it publishes
 // this event to the UI event Q which then wakes the UI event handler which
 // calls the corresponding state function handle i.e. short_press(), etc..
-
+// Now the input above drives the UI state as shown below:
+//
 // |---------|-------------------------|------------|-------------------------|
-// | in_menu |                         | In Command |                         |
+// | In Menu |                         | In Command |                         |
 // |---------|                         |------------|                         |
 // |                                   |                                      |
 // |           CMD List                |                     Line Buff        |
 // |          |---------|       |-------------|             |----------|      |                                             
 // | Cursor-->|  cmd_0  |------>| Short Press |-- Cursor--->|  line_0  |---   |
-// |    ^     |  cmd_1  |       |  (CMD INI)  |             |  line_1  |  |   |
-// |    |     |  cmd_2  |       |-------------|             |  line_2  |  |   |
-// |    |     |  ...    |              |                    |    ...   |  |   |
-// |    |     |  cmd_n  |              |                    |  line_n  |  |   |
-// |    |     |---------|              |                    |----------|
-// |    |                        |------------|
-// |    |------------------------| Long Press |            |-------------| 
-// |                             | (CMD FINI) |            | Short Press |
-// |                             |------------|            |   (CMD CB)  |   
-// |                                                       |-------------|
+// |    ^     |  cmd_1  |       |  (CMD INI)  |     ^       |  line_1  |  |   |
+// |    |     |  cmd_2  |       |-------------|     |       |  line_2  |  |   |
+// |    |     |  ...    |              |            |       |    ...   |  |   |
+// |    |     |  cmd_n  |              |            |       |  line_n  |  |   |
+// |    |     |---------|              |            |       |----------|  |   |
+// |    |                        |------------|     |                     |   |
+// |    |------------------------| Long Press |     |           -----------   |
+// |                             | (CMD FINI) |     |           v             |
+// |                             |------------|     |   |-------------|       |
+// |                                   |            ----| Short Press |       |
+// |                                   |                |   (CMD CB)  |       |
+// |                                   |                |-------------|       |
+// |-----------------------------------|--------------------------------------|
+//
+//
+// The UI state is a set of different modes. In menu and in command. In the 
+// "in menu" mode you see a list of commands to be executed. Rot Left and Rot
+// Right move the cursor up and down the screen. Based on the cursor position
+// and size of screen the display is updated in a logical manner. A
+// short press on this mode executes a commands init function and switches the
+// mode to in command where a line buffer is seen and scrolled through instead
+// of a list of commands. Its on the command to clear the buffer before use. 
+// Now subsequent short presses pass the index in the line buffer the cursor is
+// pointing too and execute that commands call back function. Finally a long
+// press brings you back to the in menu mode and calls the commands fini 
+// function. API functions are provided for manipulating the UI state.
+//
+// NOTE access to the UI state via API functions are not guarded i.e. anyone
+// or command can call them regardless of whether that function was executing
+// it is up to the user to make sure that the commands fini functions kills all
+// future access to the UI state.
+//
+// CONFIG) Dont forget to set the following in menuconfig. Mostly need to worry
+//         if registering  too many commands, line buffer overflow, or the UI
+//         event handler is taking up to much cpu time
+//                * UI_NUM_CMDS
+//                * UI_NUM_LINE_BUFF
+//                * UI_EVENT_Q_SIZE
+//                * CONFIG_UI_EVENT_HNDLR_PRIO
+//
+
 #pragma once
 
 #include <stdint.h>
@@ -84,6 +116,7 @@ void home_screen_pos(void);
 
 // Dont allow the cursor to move
 void lock_cursor(void);
+
 void unlock_cursor(void);
 void set_cursor(uint8_t i);
 

@@ -7,6 +7,14 @@
 //      * replaced with `portTICK_PERIOD_MS`
 // * NOTE - Not reentrant nor thread safe. All access in a concurrent 
 //          environment needs to be guarded by CVs and Mutexes
+//
+// * Config - Besure to set these in menuconfig based on LCD set up
+//    * LCD_COLS
+//    * LCD_ROWS
+//    * LCD_I2C_SPEED
+//    * LCD_I2C_ADDR
+//    * LCD_SDA_PIN
+//    * LCD_SCL_PIN
 
 #pragma once
 

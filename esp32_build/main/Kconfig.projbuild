@@ -1,0 +1,11 @@
+menu "Global ESP 32 Deluminator Config"
+
+    config SPIFFS_MOUNT_PATH
+        string "Mount Path for SPIFFS"
+        default "/spiffs"
+
+    config SPIFFS_MAX_FILES
+        int "max files on FS"
+        default 32
+        
+endmenu
