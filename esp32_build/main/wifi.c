@@ -17,7 +17,7 @@
 #include "user_interface.h"
 #include "wsl_bypasser.h"
 #include "tcp_file_server.h"
-
+#include "pkt_sniffer.h"
 
 #define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
@@ -28,16 +28,6 @@
 
 #define MAC_LEN 6
 #define MAX_SSID_LEN 32
-#define SEQ_NUM_LB        0x16
-#define SEQ_NUM_LB_MASK   0xF0
-#define SEQ_NUM_LB_RSHIFT 0x4
-#define SEQ_NUM_UB        0x17
-#define SEQ_NUM_UB_MASK   0xFF
-#define SEQ_NUM_UB_LSHIFT 0x8
-#define TO_DS_BYTE        0x1
-#define TO_DS_MASK        0x1
-#define FROM_DS_BYTE      0x1
-#define FROM_DS_MASK      0x2
 #define MOUNT_PATH "/spiffs"
 
 static const char* TAG = "WIFI";
@@ -389,74 +379,10 @@ static void set_active_mac_ap_target(uint8_t ap_index)
 
 }
 
-static inline int16_t get_seq_num(uint8_t* pkt, uint16_t len)
+
+
+static void usee_me(void)
 {
-    if(len <= SEQ_NUM_UB)
-    {
-        ESP_LOGE(TAG, "in get seq num, pakt too small");
-        return -1;
-    }
-
-    int16_t lb = (((int16_t)pkt[SEQ_NUM_LB]) & SEQ_NUM_LB_MASK) >> SEQ_NUM_LB_RSHIFT;
-    int16_t ub = (((int16_t)pkt[SEQ_NUM_UB]) & SEQ_NUM_UB_MASK) << SEQ_NUM_UB_LSHIFT; 
-
-    return lb + ub;
-}
-
-static inline uint8_t get_to_ds(uint8_t* pkt)
-{
-    return !(!(pkt[TO_DS_BYTE] & TO_DS_MASK));
-}
-
-static inline uint8_t get_from_ds(uint8_t* pkt)
-{
-    return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
-}
-
-static inline uint8_t get_type(uint8_t* pkt)
-{
-    return (pkt[0] & 0x0c) >> 2;
-}
-
-static inline uint8_t get_subtype(uint8_t* pkt)
-{
-    return (pkt[0] >> 4) & 0x0F;
-}
-
-static inline void eapol_pkt_parse(uint8_t* p, uint16_t len)
-{
-    uint8_t num = 255;
-
-    if(get_type(p) == 0 && get_subtype(p) == 0)
-    {
-        // assoc request
-        num = 0;
-    }
-
-    if(get_type(p) == 0 && get_subtype(p) == 1)
-    {
-        // assoc response
-        num = 1;
-    }
-
-
-    if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
-    {
-        // eapol
-        int16_t s = get_seq_num(p, len);
-        uint8_t to = get_to_ds(p);
-        uint8_t from = get_from_ds(p);
-
-        if     (s == 0 && to == 0 && from == 1) { num = 2; }
-        else if(s == 0 && to == 1 && from == 0) { num = 3; }
-        else if(s == 1 && to == 0 && from == 1) { num = 4; }
-        else if(s == 1 && to == 1 && from == 0) { num = 5; }
-        else
-        {
-            ESP_LOGE(TAG, "WAAAHHH -> seq=%d   to_ds=%d   from_ds=%d", s, to, from);
-            return;
-        }
-    }
 
     if(num > 5)
     {
