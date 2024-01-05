@@ -40,8 +40,6 @@ static uint16_t ap_count = 0;
 // log every STA MAC that is associated with that AP. The active mac list gets
 // updated by the packet sniffer, scanning packets for STAs on an ap, WPA2
 // handshakes and strength of STAs
-static uint8_t pkt_sniffer_running = 0;
-
 struct sta
 {
     uint8_t mac[MAC_LEN];
@@ -380,14 +378,21 @@ static void set_active_mac_ap_target(uint8_t ap_index)
 }
 
 
-
-static void usee_me(void)
+static void _cb(wifi_promiscuous_pkt_t* p, 
+                wifi_promiscuous_pkt_type_t type, 
+                WPA2_Handshake_Index_t eapol)
 {
+    uint8_t* src = p->payload + 10;
 
-    if(num > 5)
+    insert_mac(src, p->rx_ctrl.rssi);
+
+    if(eapol == HS_NONE)
     {
         return;
     }
+
+    uint16_t len = p->rx_ctrl.sig_len;
+    uint8_t num = (int) eapol; 
 
     ESP_LOGI(TAG, "%s -- Recovered WPA2 (%d)", ap_info[active_mac_target_ap].ssid, num);
 
@@ -406,7 +411,7 @@ static void usee_me(void)
     if(eapol_pkt_lens[num] == 0)
     {
         eapol_pkt_lens[num] = len;
-        memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p, len);
+        memcpy(eapol_buffer + EAPOL_MAX_PKT_LEN*num, p->payload, len);
         ++eapol_pkts_captured;
     }
     else
@@ -423,26 +428,9 @@ static void usee_me(void)
     
 }
 
-static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
-{
-   
-    wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
-
-    // uint8_t* m1 = p->payload + 4;
-    uint8_t* m2 = p->payload + 10;
-    uint8_t* m3 = p->payload + 16;
-
-    if(mac_is_eq(m3, ap_info[active_mac_target_ap].bssid))
-    {
-        insert_mac(m2, p->rx_ctrl.rssi);
-        eapol_pkt_parse(p->payload, p->rx_ctrl.sig_len);
-    }
-
-}
-
 static void launch_pkt_sniffer()
 {
-    if(pkt_sniffer_running)
+    if(pkt_sniffer_is_running())
     {
         ESP_LOGE(TAG, "Called launch_pkt_sniffer when already running");
         return;
@@ -460,34 +448,34 @@ static void launch_pkt_sniffer()
         deauth_client();
     }
 
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous(1));
+    ESP_ERROR_CHECK(pkt_sniffer_clear_filter_list());
+
+    pkt_sniffer_filtered_cb_t filt_cb = {0};
+
+    filt_cb.ap_active = 1;
+    memcpy(filt_cb.ap, ap_info[active_mac_target_ap].bssid, 6);
+    filt_cb.cb = _cb;
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_add_filter(&filt_cb));
 
     wifi_promiscuous_filter_t filt = 
     {
         .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_MGMT
     };
 
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&pkt_sniffer_cb));
-    ESP_ERROR_CHECK(esp_wifi_set_channel(ap_info[active_mac_target_ap].primary, WIFI_SECOND_CHAN_NONE));
-    pkt_sniffer_running = 1;
-
-    ESP_LOGI(TAG, "Pkt Sniffer Running w/ target AP ssid = %s", ap_info[active_mac_target_ap].ssid);
-
+    ESP_ERROR_CHECK(pkt_sniffer_launch(ap_info[active_mac_target_ap].primary, filt));
 }
 
 static void kill_pkt_sniffer(void)
 {
-    if(!pkt_sniffer_running)
+    if(!pkt_sniffer_is_running())
     {
         ESP_LOGE(TAG, "Called kill_pkt_sniffer when not running");
         return;
     }
 
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous(0));
-    pkt_sniffer_running = 0;
-
-    ESP_LOGI(TAG, "Pkt Sniffer Killed");
+    ESP_ERROR_CHECK(pkt_sniffer_kill());
+    ESP_ERROR_CHECK(pkt_sniffer_clear_filter_list());
 }
 
 //*****************************************************************************
@@ -539,7 +527,7 @@ int do_repl_scan_mac_start(int argc, char** argv)
 
     set_active_mac_ap_target( (uint8_t) strtol(argv[1], NULL,10) );
 
-    if(pkt_sniffer_running)
+    if(pkt_sniffer_is_running())
     {
         ESP_LOGE(TAG, "In do_repl_scan_mac_start - PKT Sniffer Already Running");
     }
@@ -571,7 +559,7 @@ int do_repl_scan_mac_stop(int argc, char** argv)
         gp_timer_stop_n_destroy();
     }
 
-    if(!pkt_sniffer_running)
+    if(!pkt_sniffer_is_running())
     {
         ESP_LOGE(TAG, "In do_repl_scan_mac_stop - PKT Sniffer already killed");
     }
@@ -596,7 +584,7 @@ int do_deauth(int argc, char** argv)
         return 1;
     }
 
-    if(!pkt_sniffer_running)
+    if(!pkt_sniffer_is_running())
     {
         ESP_LOGE(TAG, "Please run the pkt sniffer first");
         return 1;
@@ -789,7 +777,7 @@ static void ui_scan_mac_fini(void)
 
     selecting_target_mac = 0;
 
-    if(!pkt_sniffer_running)
+    if(!pkt_sniffer_is_running())
     {   
         ESP_LOGE(TAG, "In ui_scan_mac_fini - Pkt Sniffer Already Killed");
     }
@@ -818,7 +806,7 @@ static void ui_scan_mac_cb(uint8_t index)
 
         set_active_mac_ap_target(index);
 
-        if(pkt_sniffer_running)
+        if(pkt_sniffer_is_running())
         {
             ESP_LOGE(TAG, "In ui_scan_mac_cb - Pkt Sniffer already running");
         }

@@ -1,0 +1,7 @@
+menu "PKT Sniffer Config"
+
+    config PKT_MAX_FILTERS
+        int "Max number of Pkt Sniffer Filtered CBs"
+        default 4
+    
+endmenu

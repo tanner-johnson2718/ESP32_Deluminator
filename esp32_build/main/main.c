@@ -15,6 +15,7 @@
 
 #include "user_interface.h"
 #include "wifi.h"
+#include "pkt_sniffer.h"
 
 static const char* TAG = "MAIN";
 
@@ -108,6 +109,12 @@ void app_main(void)
     register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
     register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
     register_no_arg_cmd("deauth", "Send Deauth Pkt to Active while scanner running", &do_deauth);
+
+    // Pkt Sniffer test driver repl functions
+    register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
+    register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
+    register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
+    register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
 
     // Some misc system level repl functions defined below
     register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);

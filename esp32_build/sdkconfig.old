@@ -1639,6 +1639,12 @@ CONFIG_RE_B_PIN=27
 # end of Rotary encoders
 
 #
+# PKT Sniffer Config
+#
+CONFIG_PKT_MAX_FILTERS=4
+# end of PKT Sniffer Config
+
+#
 # TCP File Server Config
 #
 CONFIG_TCP_SERVER_IP="192.168.4.1"

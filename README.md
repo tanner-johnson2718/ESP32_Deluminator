@@ -23,6 +23,31 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 # Software and the ESP32 System
 
+## Coding Style Dictates
+
+* (1) All component API functions **shall** return `esp_err_t`
+    * Exceptions made for trivial situations like `is_running(void)` function
+* (2) All returns from component API functions **shall** are handled via `ESP_ERROR_CHECK` or `ESP_ERROR_CHECK_WITHOUT_ABORT`
+    * Again minus trivial exceptions, see note above
+* (3) All components *should* have both implementation and theory doc in the header
+* (4) All component API functions *should* have a summary describing their execution logic
+* (5) All component API functions **shall** have a description of possible return args
+* (6) All component API functions **shall** a description of every input
+* (7) All components *should* export a REPL test interface
+* (8) All components **shall** not use printf outside of REPL test commands
+* (9) All component API functions **shall** start with the name of the component
+    * Abbreviations are allowed i.e. `ui_init` for the user interface components
+* (10) All components *should* use Kconfig params to set defines within their module
+
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) | (9) | (10) |
+| --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---  |
+| encoder         |     |     |     |     |     |     |     |     |     |      |
+| HD44780         |     |     |     |     |     |     |     |     |     |      |
+| pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |   X  |
+| tcp_file_server |     |     |     |     |     |     |     |     |     |      |   
+| user_interface  |     |     |     |     |     |     |     |     |     |      |
+| wsl_bypasser    |     |     |     |     |     |     |     |     |     |      |
+
 # Attacks and digging into 802.11
 
 # Wiring and 3D Printed Case
