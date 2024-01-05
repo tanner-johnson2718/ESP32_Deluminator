@@ -21,8 +21,8 @@
 #include "esp_wifi.h"
 
 //*****************************************************************************
-// WPA2 Handshake index.... TODO ... Some shit about packet structrure of
-// eapol and other shits ...
+// WPA2 Handshake index. One of the main tasks of this component is to capture
+// and identify WPA2 handshake packets.
 //*****************************************************************************
 enum WPA2_Handshake_Index
 {
