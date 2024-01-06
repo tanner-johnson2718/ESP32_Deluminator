@@ -260,8 +260,17 @@ void init_user_interface()
     assert(ui_event_q);
     ESP_LOGI(TAG, "UI Event Handler Launched");
 
-    ESP_ERROR_CHECK(rotary_encoder_init(ui_event_q));
-    ESP_ERROR_CHECK(rotary_encoder_add(&re));
+    // If we fail to add the rot encoder. That shouldn't be an issue for the
+    // rest  of the module as the only result of failure is that the UI event
+    // loop will get nothing posted to it
+    esp_err_t e;
+    e = rotary_encoder_init(ui_event_q)
+    ESP_ERROR_CHECK_NO_ABBORT(e);
+
+    if(e == ESP_OK)
+    {
+        ESP_ERROR_CHECK_NO_ABORT(rotary_encoder_add(&re));
+    }
     
     LCD_init();
 

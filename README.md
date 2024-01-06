@@ -41,7 +41,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) | (9) | (10) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---  |
-| encoder         |     |     |     |     |     |     |     |     |     |      |
+| encoder         |  X  |  X  |  X  |  X  |     |     |     |     |     |      |
 | HD44780         |     |     |     |     |     |     |     |     |     |      |
 | pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |   X  |
 | tcp_file_server |     |     |     |     |     |     |     |     |     |      |   
