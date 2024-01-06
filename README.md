@@ -47,7 +47,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |  X  |
 | tcp_file_server |     |     |     |     |     |     |     |     |     |     |   
 | user_interface  |     |     |     |     |     |     |     |     |     |     |
-| wsl_bypasser    |     |     |     |     |     |     |     |     |     |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
 
 # Attacks and digging into 802.11
 

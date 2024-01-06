@@ -18,8 +18,10 @@
  * 
  * @param frame_buffer 
  * @param size size of frame buffer
+ *
+ * @returns ESP_OK on success or else error from esp_wifi_80211_tx
  */
-void wsl_bypasser_send_raw_frame(const uint8_t *frame_buffer, int size);
+esp_err_t wsl_bypasser_send_raw_frame(const uint8_t *frame_buffer, int size);
 
 /**
  * @brief Sends deauthentication frame with forged source AP from given ap_record
@@ -27,13 +29,25 @@ void wsl_bypasser_send_raw_frame(const uint8_t *frame_buffer, int size);
  * This will send deauthentication frame acting as frame from given AP, and destination will be broadcast
  * MAC address - \c ff:ff:ff:ff:ff:ff
  * 
- * @param ap_record AP record with valid AP information 
+ * @param ap_mac 6 byte MAC addr pointer to AP address
+ *
+ * @returns ESP_OK on success or else error from esp_wifi_80211_tx
  */
-void wsl_bypasser_send_deauth_frame(uint8_t* ap_mac);
+esp_err_t wsl_bypasser_send_deauth_frame(uint8_t* ap_mac);
 
 
-// Adding a function so as to send the deauth frame only to a specific STA
-void wsl_bypasser_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_mac);
+/**
+ * @brief Sends deauthentication frame with forged source AP from given ap_record
+ *  
+ * This will send deauthentication frame acting as frame from given AP, and destination will be broadcast
+ * MAC address of that provided
+ * 
+ * @param ap_mac 6 byte MAC addr pointer to AP address
+ * @param sta_mac 6 byte MAC addr pointer to STA address 
+ *
+ * @returns ESP_OK on success or else error from esp_wifi_80211_tx
+ */
+esp_err_t wsl_bypasser_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_mac);
 
 
 #endif

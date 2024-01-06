@@ -591,7 +591,7 @@ int do_deauth(int argc, char** argv)
     }
 
     uint8_t i = (uint8_t) strtol(argv[1], NULL,10);
-    wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[i]);
+    ESP_ERROR_CHECK(wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[i]));
     ESP_LOGI(TAG, "DEAUTH SENT AP=%s STA="MACSTR, ap_info[active_mac_target_ap].bssid, MAC2STR((uint8_t*) &active_mac_list[i]));
 
     return 0;
@@ -925,7 +925,7 @@ static void ui_scan_mac_cb(uint8_t index)
 
         stop_report_rssi_timer();
 
-        wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[target_mac]);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[target_mac]));
         ESP_LOGI(TAG, "DEAUTH SENT AP=%s STA="MACSTR, ap_info[active_mac_target_ap].bssid, MAC2STR((uint8_t*) &active_mac_list[target_mac]));
 
         lock_cursor();
