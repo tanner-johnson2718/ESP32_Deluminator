@@ -18,9 +18,64 @@
 
 #pragma once
 
-void LCD_init();
-void LCD_setCursor(uint8_t col, uint8_t row);
-void LCD_home(void);
-void LCD_clearScreen(void);
-void LCD_writeChar(char c);
-void LCD_writeStr(char* str); 
+//*****************************************************************************
+// LCD_init) Does a reset sequence, inits the IO expander giving is I2C access
+//           to the display. If this fails, other API functions will not be
+//           accessible.
+//
+// Returns) ESP_OK on sucess else not. Error code is passed up from i2c init
+//          and i2c writes.
+//
+//***************************************************************************** 
+esp_err_t LCD_init(void);
+
+//*****************************************************************************
+// LCD_setCursor) Sets pos in RAM such that subsequent writes will go to the 
+//                passed row and col.
+//
+// Input col) Must be between 0 and the configured max col -1. If outside this
+//            range it will not fail, but just reset col to 0 and procede.
+//
+// Input row_ Same as col but for row and if out of range will set to max row-1
+//
+// Returns) ESP_OK on success or the ret code from the i2c write.
+//
+//*****************************************************************************
+esp_err_t LCD_setCursor(uint8_t col, uint8_t row);
+
+//*****************************************************************************
+// LCD_home) Brings cursor back to 0,0
+//
+// Returns) ESP_OK on success or the ret code from the i2c write.
+//
+//*****************************************************************************
+esp_err_t LCD_home(void);
+
+//*****************************************************************************
+// LCD_clearScreen) Delete all text / chars on the lcd
+//
+// Returns) ESP_OK on success or the ret code from the i2c write.
+//
+//*****************************************************************************
+esp_err_t LCD_clearScreen(void);
+
+//*****************************************************************************
+// LCD_writeChar) Write a char to the screen and currently set row and col
+//
+// Input c) No checks really, assumes all values will no break the device,
+//          garbage may appear on screen.
+//
+// Returns) ESP_OK on success or the ret code from the i2c write.
+//
+//*****************************************************************************
+esp_err_t LCD_writeChar(char c);
+
+//*****************************************************************************
+// LCD_writeStr) Repreadtly calls write char, writing the string to the row
+//
+// Input str) Does no checks on str. Is up to user to validate string.
+//
+// Returns) ESP_OK on success or the ret code from the i2c write.
+//
+//*****************************************************************************
+esp_err_t LCD_writeStr(char* str); 

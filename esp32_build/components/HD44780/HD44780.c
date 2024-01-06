@@ -41,16 +41,19 @@
 // P6 -> D6
 // P7 -> D7
 
-static char tag[] = "LCD Driver";
+static char TAG[] = "LCD Driver";
 static uint8_t LCD_addr = CONFIG_LCD_I2C_ADDR;
 static uint8_t SDA_pin = CONFIG_LCD_SDA_PIN;
 static uint8_t SCL_pin = CONFIG_LCD_SCL_PIN;
 static uint8_t LCD_cols = CONFIG_LCD_COLS;
 static uint8_t LCD_rows = CONFIG_LCD_ROWS;
 
-static void LCD_writeNibble(uint8_t nibble, uint8_t mode);
-static void LCD_writeByte(uint8_t data, uint8_t mode);
-static void LCD_pulseEnable(uint8_t nibble);
+static esp_err_t LCD_writeNibble(uint8_t nibble, uint8_t mode);
+static esp_err_t LCD_writeByte(uint8_t data, uint8_t mode);
+static esp_err_t LCD_pulseEnable(uint8_t nibble);
+
+uint8_t lcd_inited = 0;
+#define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
 
 static esp_err_t I2C_init(void)
 {
@@ -62,112 +65,173 @@ static esp_err_t I2C_init(void)
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = CONFIG_LCD_I2C_SPEED
     };
-	i2c_param_config(I2C_NUM_0, &conf);
-	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
-    return ESP_OK;
+	esp_err_t e = i2c_param_config(I2C_NUM_0, &conf);
+    if(e != ESP_OK)
+    {
+        return e;
+    }
+	e = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+    return e;
 }
 
-void LCD_init()
+esp_err_t LCD_init()
 {
-    I2C_init();
+    CHECK(I2C_init());
+
     vTaskDelay(100 / portTICK_PERIOD_MS);                                 // Initial 40 mSec delay
 
     // Reset the LCD controller
-    LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND);                   // First part of reset sequence
+    CHECK(LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND));                   // First part of reset sequence
     vTaskDelay(10 / portTICK_PERIOD_MS);                                  // 4.1 mS delay (min)
-    LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND);                   // second part of reset sequence
+    CHECK(LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND));                   // second part of reset sequence
     ets_delay_us(200);                                                  // 100 uS delay (min)
-    LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND);                   // Third time's a charm
-    LCD_writeNibble(LCD_FUNCTION_SET_4BIT, LCD_COMMAND);                // Activate 4-bit mode
+    CHECK(LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND));                   // Third time's a charm
+    CHECK(LCD_writeNibble(LCD_FUNCTION_SET_4BIT, LCD_COMMAND));                // Activate 4-bit mode
     ets_delay_us(80);                                                   // 40 uS delay (min)
 
     // --- Busy flag now available ---
     // Function Set instruction
-    LCD_writeByte(LCD_FUNCTION_SET_4BIT, LCD_COMMAND);                  // Set mode, lines, and font
+    CHECK(LCD_writeByte(LCD_FUNCTION_SET_4BIT, LCD_COMMAND));                  // Set mode, lines, and font
     ets_delay_us(80); 
 
     // Clear Display instruction
-    LCD_writeByte(LCD_CLEAR, LCD_COMMAND);                              // clear display RAM
+    CHECK(LCD_writeByte(LCD_CLEAR, LCD_COMMAND));                              // clear display RAM
     vTaskDelay(2 / portTICK_PERIOD_MS);                                   // Clearing memory takes a bit longer
     
     // Entry Mode Set instruction
-    LCD_writeByte(LCD_ENTRY_MODE, LCD_COMMAND);                         // Set desired shift characteristics
+    CHECK(LCD_writeByte(LCD_ENTRY_MODE, LCD_COMMAND));                         // Set desired shift characteristics
     ets_delay_us(80); 
 
-    LCD_writeByte(LCD_DISPLAY_ON, LCD_COMMAND);                         // Ensure LCD is set to on
+    CHECK(LCD_writeByte(LCD_DISPLAY_ON, LCD_COMMAND));                         // Ensure LCD is set to on
+
+    lcd_inited = 1;
+
+    return ESP_OK;
 }
 
-void LCD_setCursor(uint8_t col, uint8_t row)
+esp_err_t LCD_setCursor(uint8_t col, uint8_t row)
 {
+    if(!lcd_inited)
+    {
+        ESP_LOGE(TAG, "Called set cursor but no inited");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (row > LCD_rows - 1) {
-        ESP_LOGE(tag, "Cannot write to row %d. Please select a row in the range (0, %d)", row, LCD_rows-1);
+        ESP_LOGE(TAG, "Cannot write to row %d. Please select a row in the range (0, %d)", row, LCD_rows-1);
         row = LCD_rows - 1;
     }
-    uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
-    LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND);
-}
 
-void LCD_writeChar(char c)
-{
-    LCD_writeByte(c, LCD_WRITE);                                        // Write data to DDRAM
-}
-
-void LCD_writeStr(char* str)
-{
-    while (*str) {
-        LCD_writeChar(*str++);
+    if(col > LCD_cols -1)
+    {
+        ESP_LOGE(TAG, "Cannot write to col %d. Please select a col in the range (0, %d)", col, LCD_cols-1);
+        col = 0;
     }
+    uint8_t row_offsets[] = {LCD_LINEONE, LCD_LINETWO, LCD_LINETHREE, LCD_LINEFOUR};
+    CHECK(LCD_writeByte(LCD_SET_DDRAM_ADDR | (col + row_offsets[row]), LCD_COMMAND));
+
+    return ESP_OK;
 }
 
-void LCD_home(void)
+esp_err_t LCD_writeChar(char c)
 {
-    LCD_writeByte(LCD_HOME, LCD_COMMAND);
-    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+    if(!lcd_inited)
+    {
+        ESP_LOGE(TAG, "Called write char but no inited");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    CHECK(LCD_writeByte(c, LCD_WRITE));                                        // Write data to DDRAM
+
+    return ESP_OK;
 }
 
-void LCD_clearScreen(void)
+esp_err_t LCD_writeStr(char* str)
 {
-    LCD_writeByte(LCD_CLEAR, LCD_COMMAND);
-    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+    if(!lcd_inited)
+    {
+        ESP_LOGE(TAG, "Called write string but no inited");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    while (*str) {
+        CHECK(LCD_writeChar(*str++));
+    }
+
+    return ESP_OK;
 }
 
-static void LCD_writeNibble(uint8_t nibble, uint8_t mode)
+esp_err_t LCD_home(void)
+{
+    if(!lcd_inited)
+    {
+        ESP_LOGE(TAG, "Called home but no inited");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    CHECK(LCD_writeByte(LCD_HOME, LCD_COMMAND));
+    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+
+    return ESP_OK;
+}
+
+esp_err_t LCD_clearScreen(void)
+{
+    if(!lcd_inited)
+    {
+        ESP_LOGE(TAG, "Called clear screen but no inited");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    CHECK(LCD_writeByte(LCD_CLEAR, LCD_COMMAND));
+    vTaskDelay(2 / portTICK_PERIOD_MS);                                   // This command takes a while to complete
+
+    return ESP_OK;
+}
+
+static esp_err_t LCD_writeNibble(uint8_t nibble, uint8_t mode)
 {
     uint8_t data = (nibble & 0xF0) | mode | LCD_BACKLIGHT;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data, 1));
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
-    i2c_cmd_link_delete(cmd);   
+    CHECK(i2c_master_start(cmd));
+    CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
+    CHECK(i2c_master_write_byte(cmd, data, 1));
+    CHECK(i2c_master_stop(cmd));
+    CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
+    i2c_cmd_link_delete(cmd); 
 
-    LCD_pulseEnable(data);                                              // Clock data into LCD
+    CHECK(LCD_pulseEnable(data));                                              // Clock data into LCD
+
+    return ESP_OK;
 }
 
-static void LCD_writeByte(uint8_t data, uint8_t mode)
+static esp_err_t LCD_writeByte(uint8_t data, uint8_t mode)
 {
-    LCD_writeNibble(data & 0xF0, mode);
-    LCD_writeNibble((data << 4) & 0xF0, mode);
+    CHECK(LCD_writeNibble(data & 0xF0, mode));
+    CHECK(LCD_writeNibble((data << 4) & 0xF0, mode));
+
+    return ESP_OK;
 }
 
-static void LCD_pulseEnable(uint8_t data)
+static esp_err_t LCD_pulseEnable(uint8_t data)
 {
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data | LCD_ENABLE, 1));
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
+    CHECK(i2c_master_start(cmd));
+    CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
+    CHECK(i2c_master_write_byte(cmd, data | LCD_ENABLE, 1));
+    CHECK(i2c_master_stop(cmd));
+    CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
     i2c_cmd_link_delete(cmd);  
     ets_delay_us(1);
 
     cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (data & ~LCD_ENABLE), 1));
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
+    CHECK(i2c_master_start(cmd));
+    CHECK(i2c_master_write_byte(cmd, (LCD_addr << 1) | I2C_MASTER_WRITE, 1));
+    CHECK(i2c_master_write_byte(cmd, (data & ~LCD_ENABLE), 1));
+    CHECK(i2c_master_stop(cmd));
+    CHECK(i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000/portTICK_PERIOD_MS));
     i2c_cmd_link_delete(cmd);
     ets_delay_us(500);
+
+    return ESP_OK;
 }

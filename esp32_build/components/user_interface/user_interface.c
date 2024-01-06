@@ -264,15 +264,19 @@ void init_user_interface()
     // rest  of the module as the only result of failure is that the UI event
     // loop will get nothing posted to it
     esp_err_t e;
-    e = rotary_encoder_init(ui_event_q)
-    ESP_ERROR_CHECK_NO_ABBORT(e);
+    e = rotary_encoder_init(ui_event_q);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(e);
 
     if(e == ESP_OK)
     {
-        ESP_ERROR_CHECK_NO_ABORT(rotary_encoder_add(&re));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rotary_encoder_add(&re));
     }
     
-    LCD_init();
+    // If lcd init fails we should get a descriptive output of the nature of 
+    // the failure to the log. Moreover, the LCD component guards against 
+    // failure to init thus we are good to continue. Maybe in future have some
+    // recovery code
+    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_init());
 
     cmd_list = malloc(MAX_NUM_UI_CMDS * LCD_COLS);
     current_log = malloc(MAX_UI_LOG_LINES * LCD_COLS);
@@ -376,23 +380,23 @@ static void _update_line(uint8_t row, uint8_t i, uint8_t max)
         return;
     }
 
-    LCD_setCursor(0, row);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_setCursor(0, row));
     if(i == cursor_pos_on_screen + index_of_first_line)
     {
-        LCD_writeChar('>');
+        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeChar('>'));
     }
     else
     {
-        LCD_writeChar(' ');
+        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeChar(' '));
     }
 
-    LCD_setCursor(1, row);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_setCursor(1, row));
     if(i < max)
     {
         if(in_menu) { line = get_cmd_str(i); }
         else        { line = get_from_line_buffer(i); }
 
-        LCD_writeStr(line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeStr(line));
     }
 
     assert(xSemaphoreGive(lcd_lock));
@@ -407,8 +411,8 @@ void update_display(void)
         return;
     }
 
-    LCD_home();
-    LCD_clearScreen();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_home());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_clearScreen());
 
     assert(xSemaphoreGive(lcd_lock));
 

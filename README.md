@@ -33,20 +33,21 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * (4) All component API functions *should* have a summary describing their execution logic
 * (5) All component API functions **shall** have a description of possible return args
 * (6) All component API functions **shall** a description of every input
+    * While checking this its good to verify that the API function has appriopiatly strict check on input args.
 * (7) All components *should* export a REPL test interface
 * (8) All components **shall** not use printf outside of REPL test commands
 * (9) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
 * (10) All components *should* use Kconfig params to set defines within their module
 
-| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) | (9) | (10) |
-| --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---  |
-| encoder         |  X  |  X  |  X  |  X  |     |     |     |     |     |      |
-| HD44780         |     |     |     |     |     |     |     |     |     |      |
-| pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |   X  |
-| tcp_file_server |     |     |     |     |     |     |     |     |     |      |   
-| user_interface  |     |     |     |     |     |     |     |     |     |      |
-| wsl_bypasser    |     |     |     |     |     |     |     |     |     |      |
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) | (9) | (10)|
+| --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| encoder         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
+| HD44780         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
+| pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |  X  |
+| tcp_file_server |     |     |     |     |     |     |     |     |     |     |   
+| user_interface  |     |     |     |     |     |     |     |     |     |     |
+| wsl_bypasser    |     |     |     |     |     |     |     |     |     |     |
 
 # Attacks and digging into 802.11
 
