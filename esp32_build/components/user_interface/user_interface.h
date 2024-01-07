@@ -78,7 +78,7 @@ typedef void (*command_cb_t)(void);
 typedef void (*on_press_cb_t)(uint8_t line_index);
 
 //*****************************************************************************
-// init_user_interface: To init the user interface a few high level tasks are
+// ui_init: To init the user interface a few high level tasks are
 //                      done
 //
 //  1) Malloc CMD list, the Line Buffer, and the call back lists. Note this
@@ -93,32 +93,107 @@ typedef void (*on_press_cb_t)(uint8_t line_index);
 //
 //  4) Reset the screen, home and cursor positions, etc.
 //
+// Returns) Will always return ESP_OK. LCD and rotencoder failures fail 
+//          gracefully such that execution can continue without them. Other
+//          failures such as no mem or mutex failures simply crash device as
+//          these can and should be fixed prior to code deployment.
 //*****************************************************************************
-void init_user_interface(void);
+esp_err_t ui_init(void);
 
-void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini);
+//*****************************************************************************
+// ui_add_cmd) Registered a UI command that will be populated on the menu 
+//             screen and can be executed
+//
+// name) The name that appears on the menu screen. Must less than 19 chars or
+//       LCD_cols -1 to fit on screen. Will genereate an ESP_INVALID_ARG 
+//       failure if not
+//
+// cmd_init) Function to be called on fist execution of the command
+//
+// on_press_cb) Function to be called once in command and press is registered
+//
+// cmd_fini) Function called when long pressed and before returning back to 
+//           the menu.
+//
+// Returns) ESP_OK on success otherwise, could be invalid name, no more room
+//          for more cmds or an error passed up by updating the display.
+//
+//*****************************************************************************
+esp_err_t ui_add_cmd(char* name, command_cb_t  cmd_init, 
+                            on_press_cb_t on_press_cb, 
+                            command_cb_t  cmd_fini);
 
-// Setters and getters for zee line buff
-char* get_from_line_buffer(uint8_t line_num);
-void push_to_line_buffer(uint8_t line_num, char* line);
 
-// Based on the current cursor pos, line index and buffer contents update the 
-// lcd
-void update_display(void);
+//*****************************************************************************
+// ui_push_to_line_buffer) insert a line at a specific index in the line buffer.
+//                      Keep in mind this is not the index on screen but it is
+//                      in the line buffer and this based on the current cursor
+//                      may need be displayed.
+//
+// line_num) Index to insert line. Is checked to verify it fits in the line 
+//           buffer
+//
+// line) String to insert. Checked that it is not longer than 19 or LCD_cols-1.
+//
+// Returns) ESP_OK on succes, else an input error.
+//
+//*****************************************************************************
+esp_err_t ui_push_to_line_buffer(uint8_t line_num, char* line);
 
-// Use this to update just one line on the screen. The passed index is the
-// index in line buff. Must be on screen or will not do anything. Must also
-// be called from not in_menu context
-void update_line(uint8_t i);
 
-// Just zeros out the cursor pos and index within the line buffer
-void home_screen_pos(void);
+//*****************************************************************************
+// ui_update_display) Home and clear screen. This just delets all the current text
+//                 on the screen and makes it so thenext LCD write goes to the
+//                 0,0 posistion. Then update each line according to whats in
+//                 the line buff at the set cursor and screen starting index. 
+//                 Access to the LCD is made atomic via semaphore. This is b/c 
+//                 writing to LCD takes several writes spaced milliseconds apart 
+//                 and we have async components. Thus this is a possible point 
+//                 of failure
+//
+// Returns) ESP_OK, otherwise could fail to get mutex or the i2c write could
+//          fail
+//*****************************************************************************
+esp_err_t ui_update_display(void);
 
-// Dont allow the cursor to move
-void lock_cursor(void);
 
-void unlock_cursor(void);
-void set_cursor(uint8_t i);
+//*****************************************************************************
+// update_line) Use this to update just one line on the screen. The passed index
+//              is the index in line buff. Must be on screen or will not do 
+//              anything. Must also be called from not in_menu context.
+//
+// i) index in the line buff not the screen. Is checked to be valid or not.
+//
+// Returns) ESP_OK on success, else could be invalid index or failure to write
+//          to LCD
+//*****************************************************************************
+esp_err_t ui_update_line(uint8_t i);
+
+
+//*****************************************************************************
+// home_screen_pos) Just sets the internal cursor and first line index to 0.
+//                  Does not update the display.
+//
+// Returns) Always ESP_OK
+//*****************************************************************************
+esp_err_t ui_home_screen_pos(void);
+
+
+//*****************************************************************************
+// lock) Dont allow the cursor to move
+//
+// Returns) Always ESP_OK
+//*****************************************************************************
+esp_err_t ui_lock_cursor(void);
+
+
+//*****************************************************************************
+// lock) allow the cursor to move. Does not matter if not previously locked
+//
+// Returns) Always ESP_OK
+//*****************************************************************************
+esp_err_t ui_unlock_cursor(void);
+
 
 //*****************************************************************************
 // Test driver functions to export to the REPL. All take in no args and always

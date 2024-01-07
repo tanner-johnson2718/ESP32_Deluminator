@@ -23,7 +23,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 # Software and the ESP32 System
 
-## Coding Style Dictates
+## Coding Standards
 
 * (1) All component API functions **shall** return `esp_err_t`
     * Exceptions made for trivial situations like `is_running(void)` function
@@ -46,8 +46,9 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | HD44780         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
 | pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |  X  |
 | tcp_file_server |     |     |     |     |     |     |     |     |     |     |   
-| user_interface  |     |     |     |     |     |     |     |     |     |     |
+| user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |
 | wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
+| main            |     |     |     |     |     |     |     |     |     |     | 
 
 # Attacks and digging into 802.11
 

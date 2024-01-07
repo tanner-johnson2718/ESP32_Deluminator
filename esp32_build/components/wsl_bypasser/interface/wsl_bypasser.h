@@ -12,6 +12,7 @@
 #define WSL_BYPASSER_H
 
 #include <stdint.h>
+#include "esp_err.h"
 
 /**
  * @brief Sends frame in frame_buffer using esp_wifi_80211_tx but bypasses blocking mechanism

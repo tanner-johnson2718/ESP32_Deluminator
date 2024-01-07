@@ -610,24 +610,24 @@ void lcd_dump_ap(uint8_t i, uint8_t* line_counter)
     char line_buff[20] = {0};
 
     strncpy(line_buff, (char*) ap_info[i].ssid, 19);
-    push_to_line_buffer(*line_counter, line_buff);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(*line_counter, line_buff));
     (*line_counter)++;
 
     snprintf(line_buff,19, "%02x:%02x:%02x:%02x:%02x:%02x", ap_info[i].bssid[0],ap_info[i].bssid[1],ap_info[i].bssid[2],ap_info[i].bssid[3],ap_info[i].bssid[4],ap_info[i].bssid[5]);
-    push_to_line_buffer(*line_counter, line_buff);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(*line_counter, line_buff));
     (*line_counter)++;
 
     snprintf(line_buff,19, "Channel=%02d", ap_info[i].primary);
-    push_to_line_buffer(*line_counter, line_buff);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(*line_counter, line_buff));
     (*line_counter)++;
 
     snprintf(line_buff,19, "RSSI=%03d", ap_info[i].rssi);
-    push_to_line_buffer(*line_counter, line_buff);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(*line_counter, line_buff));
     (*line_counter)++;
 
     line_buff[0] = ' ';
     line_buff[1] = (char) 0;
-    push_to_line_buffer(*line_counter, line_buff);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(*line_counter, line_buff));
     (*line_counter)++;
 }
 
@@ -645,13 +645,13 @@ void ui_scan_ap_ini(void)
 {
     ESP_LOGI(TAG, "UI SCAN AP CMD INI");
 
-    lock_cursor();
-    home_screen_pos();
-    push_to_line_buffer(0, "Scanning...");
-    push_to_line_buffer(1, "");
-    push_to_line_buffer(2, "");
-    push_to_line_buffer(3, "");
-    update_display();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_lock_cursor());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(0, "Scanning..."));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
     update_ap_info();
 
     uint8_t i;
@@ -661,7 +661,7 @@ void ui_scan_ap_ini(void)
         lcd_dump_ap(i, &line_counter);   // puts in line buffer
     }
 
-    unlock_cursor();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_unlock_cursor());
     
     return;   // updates display upon return
 }
@@ -684,19 +684,19 @@ static void report_num_macs_cb(void* args)
 {   
     char line[20];
     snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
-    push_to_line_buffer(1, line);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, line));
     snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
-    push_to_line_buffer(2, line);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, line));
     if(eapol_pkts_written_out)
     {
-        push_to_line_buffer(3, "Handshake Captured");
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, "Handshake Captured"));
     }
     else
     {
-        push_to_line_buffer(3, "");
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, ""));
     }
 
-    update_display();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
 }
 
 static void start_report_num_macs_timer(void)
@@ -724,8 +724,8 @@ static void report_rssi_cb(void* args)
 {   
     char line[20];
     snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
-    push_to_line_buffer(2, line);
-    update_line(2);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, line));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_line(2));
 }
 
 static void start_report_rssi_timer(void)
@@ -757,7 +757,7 @@ static void list_ssids_lcd(void)
     for(i = 0; i < ap_count; ++i)
     {
         strncpy(line_buff, (char*) ap_info[i].ssid, 19);
-        push_to_line_buffer(i, line_buff);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(i, line_buff));
     }
 }
 
@@ -800,7 +800,7 @@ static void ui_scan_mac_cb(uint8_t index)
         if(index >= ap_count)
         {
             ESP_LOGE(TAG, "In Scan STA UI app, tried to set AP index out of range");
-            home_screen_pos();
+            ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
             return;
         }
 
@@ -815,18 +815,18 @@ static void ui_scan_mac_cb(uint8_t index)
             launch_pkt_sniffer();
         }
         
-        lock_cursor();
-        home_screen_pos();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_lock_cursor());
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
         strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
-        push_to_line_buffer(0, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(0, line));
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
-        push_to_line_buffer(1, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, line));
         snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
-        push_to_line_buffer(2, line);
-        push_to_line_buffer(3, "");
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, line));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, ""));
         
         
-        update_display();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
 
         start_report_num_macs_timer();
         
@@ -859,23 +859,23 @@ static void ui_scan_mac_cb(uint8_t index)
 
         stop_report_num_macs_timer();
 
-        home_screen_pos();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
 
         uint8_t i;
         for(i = 0; i < active_mac_list_len; ++i)
         {
             snprintf(line, 19, "%02x:%02x:%02x:%02x:%02x:%02x", get_nth_mac(i)[0], get_nth_mac(i)[1], get_nth_mac(i)[2],get_nth_mac(i)[3],get_nth_mac(i)[4],get_nth_mac(i)[5]);
-            push_to_line_buffer(i, line);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(i, line));
         }
 
         // If less then 4 macs, clear the rest of the screen
         for(;i<4;++i)
         {
-            push_to_line_buffer(i, "");
+            ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(i, ""));
         }
 
-        update_display();
-        unlock_cursor();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_unlock_cursor());
         selecting_target_mac = 1;
 
         return;
@@ -898,17 +898,16 @@ static void ui_scan_mac_cb(uint8_t index)
         assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
 
         
-        lock_cursor();
-        home_screen_pos();
-        set_cursor(3);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_lock_cursor());
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
         strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
-        push_to_line_buffer(0, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(0, line));
         snprintf(line, 19, MACSTR, MAC2STR(get_nth_mac(target_mac)));
-        push_to_line_buffer(1, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, line));
         snprintf(line, 19, "RSSI = %03d   ", get_nth_rssi(target_mac));
-        push_to_line_buffer(2, line);
-        push_to_line_buffer(3, "-----> PWN <------");
-        update_display();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, line));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, "-----> PWN <------"));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
 
         start_report_rssi_timer();
 
@@ -928,16 +927,16 @@ static void ui_scan_mac_cb(uint8_t index)
         ESP_ERROR_CHECK_WITHOUT_ABORT(wsl_bypasser_send_deauth_frame_targted(ap_info[active_mac_target_ap].bssid, (uint8_t*) &active_mac_list[target_mac]));
         ESP_LOGI(TAG, "DEAUTH SENT AP=%s STA="MACSTR, ap_info[active_mac_target_ap].bssid, MAC2STR((uint8_t*) &active_mac_list[target_mac]));
 
-        lock_cursor();
-        home_screen_pos();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_lock_cursor());
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
         strncpy(line, (char*) ap_info[active_mac_target_ap].ssid, 19);
-        push_to_line_buffer(0, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(0, line));
         snprintf(line, 19, "MACS Found = %03d", active_mac_list_len);
-        push_to_line_buffer(1, line);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, line));
         snprintf(line, 19, "EAPOL PKTS = %01d", eapol_pkts_captured);
-        push_to_line_buffer(2, line);
-        push_to_line_buffer(3, "");
-        update_display();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, line));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, ""));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
 
         start_report_num_macs_timer();
         
@@ -949,16 +948,16 @@ static void ui_scan_mac_ini(void)
 {
     ESP_LOGI(TAG, "UI SCAN AP CMD INI");
 
-    lock_cursor();
-    home_screen_pos();
-    push_to_line_buffer(0, "Scanning APs...");
-    push_to_line_buffer(1, "");
-    push_to_line_buffer(2, "");
-    push_to_line_buffer(3, "");
-    update_display();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_lock_cursor());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(0, "Scanning APs..."));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(1, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(3, ""));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
     update_ap_info();
     list_ssids_lcd();
-    unlock_cursor();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_unlock_cursor());
 }
 
 //*****************************************************************************
@@ -1019,6 +1018,6 @@ void init_wifi(void)
     assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
     assert(xSemaphoreGive(eapol_lock) == pdTRUE);
 
-    add_ui_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini);
-    add_ui_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini));
 }

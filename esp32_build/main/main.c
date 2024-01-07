@@ -91,7 +91,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
-    init_user_interface();
+    ui_init();
     init_wifi();
 
     // ESP IDF REPL Func Registration

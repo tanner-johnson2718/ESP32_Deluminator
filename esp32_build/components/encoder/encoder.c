@@ -34,6 +34,8 @@
  *
  * BSD Licensed as described in the file LICENSE
  */
+
+
 #include "encoder.h"
 #include <esp_log.h>
 #include <string.h>

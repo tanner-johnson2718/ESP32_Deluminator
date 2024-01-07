@@ -106,6 +106,7 @@ esp_err_t LCD_init()
 
     lcd_inited = 1;
 
+    ESP_LOGI(TAG, "LCD inited");
     return ESP_OK;
 }
 

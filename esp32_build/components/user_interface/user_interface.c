@@ -13,6 +13,9 @@
 #include "HD44780.h"
 #include "encoder.h"
 
+#define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
+#define CHECK_W_LOCK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) { assert(xSemaphoreGive(lcd_lock)); return __;} } while (0)
+
 #define MAX_NUM_UI_CMDS CONFIG_UI_NUM_CMDS
 #define MAX_UI_LOG_LINES CONFIG_UI_NUM_LINE_BUFF
 #define UI_EVENT_Q_SIZE CONFIG_UI_EVENT_Q_SIZE
@@ -116,7 +119,7 @@ static void button_short_press(void)
         cb(index_of_first_line + cursor_pos_on_screen);
     }
 
-    update_display();
+    ui_update_display();
 }
 
 // On a long press we exit back out into the menu screen. Call the commands 
@@ -134,7 +137,7 @@ static void button_long_press(void)
     index_of_first_line = 0;
     in_log_cmd_index = 0;
     cursor_locked = 0;
-    update_display();
+    ui_update_display();
 }
 
 //*****************************************************************************
@@ -157,7 +160,7 @@ static void rot_left(void)
     if(cursor_pos_on_screen == 0 && index_of_first_line > 0)
     {
         index_of_first_line--;
-        update_display();
+        ui_update_display();
         return;
     }
     
@@ -165,7 +168,7 @@ static void rot_left(void)
     {
         // no need to update whats on screen just move cursor
         cursor_pos_on_screen--;
-        update_display();
+        ui_update_display();
         return;
     }
 }
@@ -192,7 +195,7 @@ static void rot_right(void)
     if((cursor_pos_on_screen == (LCD_ROWS-1)) && ((index_of_first_line + LCD_ROWS) < (max-1)))
     {
         ++index_of_first_line;
-        update_display();
+        ui_update_display();
         return;
     }
 
@@ -204,7 +207,7 @@ static void rot_right(void)
         }
 
         ++cursor_pos_on_screen;
-        update_display();
+        ui_update_display();
         return;
     }
 }
@@ -252,7 +255,7 @@ int do_long_press(int argc, char** argv)
 // PUBLIC API
 //*****************************************************************************
 
-void init_user_interface()
+esp_err_t ui_init()
 {    
     
     ui_event_q = xQueueCreate(UI_EVENT_Q_SIZE, sizeof(rotary_encoder_event_t));
@@ -301,22 +304,24 @@ void init_user_interface()
 
     lcd_lock = xSemaphoreCreateBinary();
     assert(xSemaphoreGive(lcd_lock) == pdTRUE);
+
+    return ESP_OK;
 }
 
-void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini)
+esp_err_t ui_add_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, command_cb_t cmd_fini)
 {
     // Check len of name if its more than 19 char kick that shit back
     if(strnlen(name, LCD_COLS - 1) > LCD_COLS - 1)
     {
         ESP_LOGE(TAG, "UI add of cmd %s failed, too long", name);
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
     // Check to see if we are registering too many cmds
     if(num_cmds == MAX_NUM_UI_CMDS)
     {
         ESP_LOGE(TAG, "UI add of cmd %s failed, too many cmds", name);
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     strcpy(cmd_list + (num_cmds * LCD_COLS), name);
@@ -329,33 +334,45 @@ void add_ui_cmd(char* name, command_cb_t cmd_init, on_press_cb_t on_press_cb, co
 
     if(in_menu)
     {
-        home_screen_pos();
-        update_display();
+        CHECK(ui_home_screen_pos()); // always succeeds anyways
+        CHECK(ui_update_display()); // may fail
     }
     else
     {
         ESP_LOGE(TAG, "IN add ui cmd - weird that ui cmd added when not in menu");
     }
+
+    return ESP_OK;
 }
 
-void push_to_line_buffer(uint8_t line_num, char* line)
+esp_err_t ui_push_to_line_buffer(uint8_t line_num, char* line)
 {
     if(line_num >= MAX_UI_LOG_LINES)
     {
         ESP_LOGE(TAG, "Tried to put line outside of line buffer range");
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
     if(strnlen(line, LCD_COLS - 1) > LCD_COLS - 1)
     {
         ESP_LOGE(TAG, "Log line %s too long", line);
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
     strncpy(current_log + (line_num*LCD_COLS), line, LCD_COLS - 1);
+
+    return ESP_OK;
 }
 
-char* get_from_line_buffer(uint8_t line_num)
+esp_err_t ui_home_screen_pos(void)
+{
+    cursor_pos_on_screen = 0;
+    index_of_first_line = 0;
+
+    return ESP_OK;
+}
+
+char* _get_from_line_buffer(uint8_t line_num)
 {
     if(line_num >= MAX_UI_LOG_LINES)
     {
@@ -365,54 +382,49 @@ char* get_from_line_buffer(uint8_t line_num)
     return current_log + (line_num*LCD_COLS);
 }
 
-void home_screen_pos(void)
-{
-    cursor_pos_on_screen = 0;
-    index_of_first_line = 0;
-}
-
-static void _update_line(uint8_t row, uint8_t i, uint8_t max)
+static esp_err_t _update_line(uint8_t row, uint8_t i, uint8_t max)
 {
     char* line;
 
     if(!xSemaphoreTake(lcd_lock, 0))
     {
-        return;
+        ESP_LOGE(TAG, "in update line failed to get lcd lock");
+        return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_setCursor(0, row));
+    CHECK_W_LOCK(LCD_setCursor(0, row));
     if(i == cursor_pos_on_screen + index_of_first_line)
     {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeChar('>'));
+        CHECK_W_LOCK(LCD_writeChar('>'));
     }
     else
     {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeChar(' '));
+        CHECK_W_LOCK(LCD_writeChar(' '));
     }
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_setCursor(1, row));
+    CHECK_W_LOCK(LCD_setCursor(1, row));
     if(i < max)
     {
         if(in_menu) { line = get_cmd_str(i); }
-        else        { line = get_from_line_buffer(i); }
+        else        { line = _get_from_line_buffer(i); }
 
-        ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_writeStr(line));
+        CHECK_W_LOCK(LCD_writeStr(line));
     }
 
     assert(xSemaphoreGive(lcd_lock));
+    return ESP_OK;
 }
 
-// based on the current cursor pos and index in either the menu or line buff,
-// dump contents of the buffer to the screen
-void update_display(void)
+esp_err_t ui_update_display(void)
 {
     if(!xSemaphoreTake(lcd_lock, 0))
     {
-        return;
+        ESP_LOGE(TAG, "in update display failed to get lcd lock");
+        return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_home());
-    ESP_ERROR_CHECK_WITHOUT_ABORT(LCD_clearScreen());
+    CHECK_W_LOCK(LCD_home());
+    CHECK_W_LOCK(LCD_clearScreen());
 
     assert(xSemaphoreGive(lcd_lock));
 
@@ -426,57 +438,44 @@ void update_display(void)
     
     for(; i < index_of_first_line + LCD_ROWS; ++i)
     {
-        _update_line(row, i, max);
+        CHECK(_update_line(row, i, max));
         ++row;
-    }        
+    }
+
+    return ESP_OK;
 }
 
-void update_line(uint8_t i)
+esp_err_t ui_update_line(uint8_t i)
 {
     if(in_menu)
     {
         ESP_LOGE(TAG, "Called update_line from menu context");
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     if(i >= MAX_UI_LOG_LINES)
     {
         ESP_LOGE(TAG, "Called update line with out of bounds index");
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
     if(i < index_of_first_line || i >= index_of_first_line + 4)
     {
         ESP_LOGE(TAG, "Called update line on line not on screen");
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    _update_line(i - index_of_first_line, i, MAX_UI_LOG_LINES);
+    return _update_line(i - index_of_first_line, i, MAX_UI_LOG_LINES);
 }
 
-void lock_cursor(void)
+esp_err_t ui_lock_cursor(void)
 {
     cursor_locked = 1;
+    return ESP_OK;
 }
 
-void unlock_cursor(void)
+esp_err_t ui_unlock_cursor(void)
 {
     cursor_locked = 0;
-}
-
-void set_cursor(uint8_t i)
-{
-    if(in_menu && i >= MAX_NUM_UI_CMDS)
-    {
-        ESP_LOGE(TAG, "tried to set cursor out of range");
-        return;
-    }
-
-    if(!in_menu && i >= MAX_UI_LOG_LINES)
-    {
-        ESP_LOGE(TAG, "tried to set cursor out of range");
-        return;
-    }
-    
-    cursor_pos_on_screen = i;
+    return ESP_OK;
 }
