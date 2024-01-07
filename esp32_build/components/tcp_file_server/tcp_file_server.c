@@ -231,12 +231,17 @@ clean_up0:
 // Start and Stop API funcs
 //*****************************************************************************
 
-uint8_t launch_tcp_file_server(char* mount_path)
+esp_err_t tcp_file_server_launch(char* mount_path)
 {
-    if(strlen(mount_path) > 32)
+    if(running)
+    {
+        ESP_LOGE(TAG, "already running");
+        return ESP_ERR_INVALID_STATE;
+    }
+    if(strnlen(mount_path, 32) > 32)
     {
         ESP_LOGE(TAG, "File system mount path passed to long");
-        return 1;
+        return ESP_ERR_INVALID_ARG;
     }
 
     strcpy(MOUNT_PATH, mount_path);
@@ -246,16 +251,48 @@ uint8_t launch_tcp_file_server(char* mount_path)
     if(!handler_task)
     {
         ESP_LOGE(TAG,"Failed to start TCP File Server Task");
-        return 1;
+        return ESP_ERR_NO_MEM;
     }
 
     ESP_LOGI(TAG, "TCP File Server Task Launched");
-    return 0;
+    return ESP_OK;
 }
 
-void kill_tcp_file_server(void)
+esp_err_t tcp_file_server_kill(void)
 {
+    if(!running)
+    {
+        ESP_LOGE(TAG, "not running");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     running = 0;
     close(client_socket);
     close(listen_sock);
+
+    return ESP_OK;
+}
+
+
+//*****************************************************************************
+// REPL test driver functions
+//*****************************************************************************
+
+int do_tcp_file_server_launch(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        printf("Usage) tcp_file_server_launch <file search path>");
+        return 1;
+    }
+
+    ESP_ERROR_CHECK(tcp_file_server_launch(argv[1]));
+
+    return 0;
+}
+
+int do_tcp_file_server_kill(int argc, char** argv)
+{
+    ESP_ERROR_CHECK(tcp_file_server_kill());
+    return 0;
 }

@@ -67,15 +67,50 @@ struct pkt_sniffer_filtered_cb
     pkt_sniffer_cb_t cb;
 } typedef pkt_sniffer_filtered_cb_t;
 
-
+//*****************************************************************************
+// Returns) 1 if running 0 else
+//*****************************************************************************
 uint8_t pkt_sniffer_is_running(void);
 
+//*****************************************************************************
+// pkt_sniffer_clear_filter_list) Clears all the filters, resets it back to 0
+//
+// Returns) ESP_OK, otherwise might timeout trying to grab the lock
+//*****************************************************************************
 esp_err_t pkt_sniffer_clear_filter_list(void);
 
+//*****************************************************************************
+// pkt_sniffer_add_filter) Fill in the filter cb struct in accordance with the
+//                         documentation provided above. Will add the filter to
+//                         list of filters and if the sniffer is running, 
+//                         matching packet will be sent your way via the passed
+//                         cb.
+//
+// f) See above.
+//
+// Returns) ESP_OK if added, otherwise could be full or failed to grab lock
+//*****************************************************************************
 esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_cb_t* f);
 
+
+//*****************************************************************************
+// pkt_sniffer_launch) Given a specific channel and packet type filter, start
+//                     pkt_sniffer
+// channel) Must be between 1 and 11
+//
+// type_filter) refer to esp_wifi documentation for details
+//
+// Returns) ESP OK If launched otherwise could have invalid arg or its already
+//          running. Also could be failures to set the wifi chip to the
+//          appropirate config.
+//*****************************************************************************
 esp_err_t pkt_sniffer_launch(uint8_t channel, wifi_promiscuous_filter_t type_filter);
 
+//*****************************************************************************
+// pkt_sniffer_kill) Kills the already running sniffer.
+//
+// Return) ESP OK if killed. 
+//*****************************************************************************
 esp_err_t pkt_sniffer_kill(void);
 
 //*****************************************************************************

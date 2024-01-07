@@ -107,7 +107,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         memcpy(client_mac, event->mac, MAC_LEN);
         ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" with id=%d connected to SoC AP", MAC2STR(client_mac), client_id);
 
-        launch_tcp_file_server(MOUNT_PATH);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(tcp_file_server_launch(MOUNT_PATH));
         
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
     {
@@ -115,7 +115,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "In wifi event handler - station "MACSTR" Diconnect Event, AID=%d", MAC2STR(event->mac), event->aid);
 
         // Just need to trigger the client handler task to clean up its shit
-        kill_tcp_file_server();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(tcp_file_server_kill());
         client_id = -1;
         memset(client_mac, 0, MAC_LEN);
     }

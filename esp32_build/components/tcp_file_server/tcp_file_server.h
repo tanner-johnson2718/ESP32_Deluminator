@@ -54,5 +54,27 @@
 
 #pragma once
 
-uint8_t launch_tcp_file_server(char* mount_path);
-void kill_tcp_file_server(void);
+//*****************************************************************************
+// tcp_file_server) Creates the file server handler task. Assumes the wifi
+//                  esp driver is inited.
+//
+// mount_path) Path to look for files to send over the network. Checks len.
+//
+// Returns ESP_OK if task created, mount path is good and could succesfully
+//         start the server.
+//*****************************************************************************
+esp_err_t tcp_file_server_launch(char* mount_path);
+
+//*****************************************************************************
+// tcp_file_server_kill) Kills the file server gracefullt
+//
+// Returns) ESP_OK if it is running else error
+//*****************************************************************************
+esp_err_t tcp_file_server_kill(void);
+
+//*****************************************************************************
+// REPL Test Driver Functions
+//*****************************************************************************
+int do_tcp_file_server_kill(int argc, char** argv);
+int do_tcp_file_server_launch(int argc, char** argv);
+

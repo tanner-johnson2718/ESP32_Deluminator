@@ -44,13 +44,10 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | encoder         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
 | HD44780         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
-| pkt_sniffer     |  X  |  X  |     |     |     |     |  X  |  X  |  X  |  X  |
-| tcp_file_server |     |     |     |     |     |     |     |     |     |     |   
+| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |  X  |  X  |  X  |
+| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |   
 | user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |
-| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
-| main            |     |     |     |     |     |     |     |     |     |     | 
-
-# Attacks and digging into 802.11
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  | N/A |  X  |  X  |  X  | 
 
 # Wiring and 3D Printed Case
 

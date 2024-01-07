@@ -16,6 +16,7 @@
 #include "user_interface.h"
 #include "wifi.h"
 #include "pkt_sniffer.h"
+#include "tcp_file_server.h"
 
 static const char* TAG = "MAIN";
 
@@ -98,6 +99,17 @@ void app_main(void)
     esp_console_register_help_command();
     register_nvs();   // comes from esp-idf/examples/console/advanced
 
+    // Some misc system level repl functions defined below
+    register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
+    register_no_arg_cmd("ls", "List files on spiffs", &do_ls);
+    register_no_arg_cmd("df", "Disk free on spiffs", &do_df);
+    register_no_arg_cmd("cat", "cat contents of file", &do_cat);
+    register_no_arg_cmd("dump_event_log", "Dump the event log to disk: dump_event_log <file>", &do_dump_event_log);
+    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
+    register_no_arg_cmd("tasks", "Print List of Tasks", &do_tasks);
+    register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
+    register_no_arg_cmd("restart", "SW Restart", &do_restart);
+
     // UI test driver repl functions
     register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
     register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
@@ -116,17 +128,9 @@ void app_main(void)
     register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
 
-    // Some misc system level repl functions defined below
-    register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
-    register_no_arg_cmd("ls", "List files on spiffs", &do_ls);
-    register_no_arg_cmd("df", "Disk free on spiffs", &do_df);
-    register_no_arg_cmd("cat", "cat contents of file", &do_cat);
-    register_no_arg_cmd("dump_event_log", "Dump the event log to disk: dump_event_log <file>", &do_dump_event_log);
-    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
-    register_no_arg_cmd("tasks", "Print List of Tasks", &do_tasks);
-    register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
-    register_no_arg_cmd("restart", "SW Restart", &do_restart);
-
+    // TCP File Server test driver repl commands
+    register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
+    register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
     // Start the REPL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
