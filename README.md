@@ -23,6 +23,22 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 # Software and the ESP32 System
 
+```
+|---------|   |-----|
+| Rot Enc |   | LCD |
+|---------|   |-----|
+
+|--------------------|   |---------------|   |-----------|   |------------|
+|         UI         |   | TCP File Serv |   | PKT Sniff |   | WSL ByPass |
+|--------------------|   |---------------|   |-----------|   |------------|
+
+|---------------------|                   |----------|
+|        Main         |                   |   Wifi   |
+|-----|--------|------|                   |-----|----|
+| NVS | SPIFFS | REPL |                   | STA | AP |
+|-----|--------|------|                   |-----|----|
+```
+
 ## Coding Standards
 
 * (1) All component API functions **shall** return `esp_err_t`
