@@ -75,7 +75,11 @@ static void initialize_nvs(void);
 // 
 // Moreover this component gives us logging via ESP_LOGI/E/W/etc. over the
 // usb serial console. menuconfig and the logging API give means to adjust the
-// outpul level globaly and specific to a module. 
+// outpul level globaly and specific to a module.
+//
+// We mainly use this REPL interface as a means of exporting test drivers that
+// can be driven on the command line and dumps its output over the serial
+// console
 //*****************************************************************************
 static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);

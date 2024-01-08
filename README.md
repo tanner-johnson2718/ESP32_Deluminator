@@ -37,31 +37,40 @@ We do not support or condone the use of any attacks on non consenting parties. P
 |---------------------|  |----------------------------------------------------|
 ```
 
+## TODO
+
+* Main needs some more love
+* Finish the table below
+* look into exactly what is happining when we crack
+    * maybe make a python script for that 
+* Recreate the LCD Apps in their own file
+* Add a deauth DDoS attack
+
 ## Coding Standards
 
 * (1) All component API functions **shall** return `esp_err_t`
     * Exceptions made for trivial situations like `is_running(void)` function
-* (2) All returns from component API functions **shall** are handled via `ESP_ERROR_CHECK` or `ESP_ERROR_CHECK_WITHOUT_ABORT`
+* (2) All returns from component API functions **shall** be handled via `ESP_ERROR_CHECK` or `ESP_ERROR_CHECK_WITHOUT_ABORT`
     * Again minus trivial exceptions, see note above
 * (3) All components *should* have both implementation and theory doc in the header
-* (4) All component API functions *should* have a summary describing their execution logic
-* (5) All component API functions **shall** have a description of possible return args
-* (6) All component API functions **shall** a description of every input
-    * While checking this its good to verify that the API function has appriopiatly strict check on input args.
-* (7) All components *should* export a REPL test interface
-* (8) All components **shall** not use printf outside of REPL test commands
-* (9) All component API functions **shall** start with the name of the component
+* (4) All component API functions **sha;l** have a summary describing their execution logic, a description of their input args with possible values, and all possible return values and their meaning
+    * While checking this its good to verify that the API function has appriopiatly strict check on input args and is returning error codes that are actually descriptive.
+* (5) All components *should* export a REPL test interface and this is the only context in which printf is allowed
+* (6) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
-* (10) All components *should* use Kconfig params to set defines within their module
+* (7) All components *should* use Kconfig params to set defines within their module
+* (8) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
 
-| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) | (9) | (10)|
-| --------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| encoder         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
-| HD44780         |  X  |  X  |  X  |  X  |  X  |  X  | N/A |  X  |  X  |  X  |
-| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |  X  |  X  |  X  |
-| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |   
-| user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |
-| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  | N/A |  X  |  X  |  X  | 
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) |
+| --------------- | --- | --- | --- | --- | --- | --- | --- | --- |
+| eapol logger    |     |     |     |     |     |     |     |     |
+| encoder         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
+| HD44780         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
+| mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
+| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |     |  X  | N/A |  X  |  X  |     |
 
 # Wiring and 3D Printed Case
 

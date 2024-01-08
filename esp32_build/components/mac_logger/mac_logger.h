@@ -39,12 +39,8 @@ struct sta
 
 struct ap
 {
-    uint8_t captured;              // 1 if weve filled in the other fields
     uint8_t ssid[SSID_MAX_LEN];
     uint8_t channel;
-    wifi_auth_mode_t authmode;
-    wifi_cipher_type_t pairwise_cipher;
-    wifi_cipher_type_t group_cipher;
     int16_t sta_list_index;
 } typedef ap_t;
 
@@ -121,17 +117,8 @@ esp_err_t mac_logger_get_sta(int16_t sta_list_index, sta_t* sta);
 esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap);
 
 //*****************************************************************************
-//
-//*****************************************************************************
-esp_err_t mac_logger_start_probe_req_timer();
-
-//*****************************************************************************
-//
-//*****************************************************************************
-esp_err_t mac_logger_stop_probe_req_timer();
-
-//*****************************************************************************
-//
+// In the even on needs to re register this bad larry with the pkt sniffer
+// we give it global linkage.
 //*****************************************************************************
 void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
                    wifi_promiscuous_pkt_type_t type, 

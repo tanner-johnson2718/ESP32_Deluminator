@@ -101,6 +101,76 @@ static inline void insert(uint8_t* m1, int8_t rssi)
     ++sta_list_len;
     set_nth_mac(sta_list_len-1, m1);    
     set_nth_rssi(sta_list_len-1, rssi);
+    set_nth_ap_index(sta_list_len-1, -1);
+    _release_lock();
+}
+
+//*****************************************************************************
+// Private AP list funcs
+//*****************************************************************************
+
+static inline uint8_t get_type(uint8_t* pkt)
+{
+    return (pkt[0] & 0x0c) >> 2;
+}
+
+static inline uint8_t get_subtype(uint8_t* pkt)
+{
+    return (pkt[0] >> 4) & 0x0F;
+}
+
+// call this if and only if the packet is a beacon or probe response
+static inline void insert_ap(wifi_promiscuous_pkt_t* p)
+{
+    uint8_t* pkt = p->payload;
+
+    if(ap_list_len == CONFIG_MAC_LOGGER_MAX_APS)
+    {
+        ESP_LOGE(TAG, "AP list full");
+        return;
+    }
+
+    if(_take_lock()){return;}
+
+    // search the sta list as it should be in there since we inserted the src
+    // address of all in coming frames.
+    int16_t i;
+    for(i = 0; i < sta_list_len; ++i)
+    {
+        if(mac_is_eq(pkt+10, get_nth_mac(i)))
+        {
+            break;
+        }
+    }
+
+    if(i == sta_list_len)
+    {
+        ESP_LOGE(TAG, "inserting AP for non existant station");
+        _release_lock();
+        return;
+    }
+
+    if(sta_list[i].ap_list_index != -1)
+    {
+        _release_lock();
+        return;
+    }
+
+    if(pkt[0x24] == 0 && pkt[0x25] > 0)
+    {
+        // found the ssid
+        ap_t* ap = ap_list+ ap_list_len;
+        
+        memcpy(ap->ssid, pkt+ 0x26, pkt[0x25]);
+        ap->ssid[pkt[0x25]] = 0;
+        ap->channel = p->rx_ctrl.channel;
+
+        ap->sta_list_index = i;
+        set_nth_ap_index(i, ap_list_len);
+
+        ++ap_list_len;
+    }
+
     _release_lock();
 }
 
@@ -190,10 +260,13 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
     }
 
     uint8_t* src = p->payload + 10;
-    // uint8_t* ap =  p->payload + 16;
 
     insert(src, p->rx_ctrl.rssi);
-    // insert_ap(ap);
+
+    if(type == WIFI_PKT_MGMT && ((get_subtype(p->payload) == 8) || get_subtype(p->payload) == 5))
+    {
+        insert_ap(p);
+    }
 
 }
 
@@ -202,10 +275,10 @@ esp_err_t mac_logger_init(void)
     pkt_sniffer_filtered_cb_t f = {0};
     f.cb = mac_logger_cb;
 
-    esp_err_t e = pkt_sniffer_add_filter(&f);
-    
     lock = xSemaphoreCreateBinary();
     assert(xSemaphoreGive(lock) == pdTRUE);
+
+    esp_err_t e = pkt_sniffer_add_filter(&f);
 
     ESP_LOGI(TAG, "inited");
 
@@ -218,18 +291,28 @@ esp_err_t mac_logger_init(void)
 
 void dump(void* args)
 {
-    int16_t n;
+    int16_t n, i;
+    int8_t n_ap;
+    ap_t ap;
+    sta_t sta;    
     ESP_ERROR_CHECK(mac_logger_get_sta_list_len(&n));
-    int16_t i;
     
     printf("STA LIST: \n");
     for(i = 0; i < n; ++i)
     {
-        sta_t sta;
         ESP_ERROR_CHECK(mac_logger_get_sta(i, &sta));
-        printf(MACSTR" -> %d\n", MAC2STR(sta.mac), sta.rssi);
+        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index);
     }
-    printf("%d macs\n\n", n);
+    printf("%d stas\n\n", n);
+
+    ESP_ERROR_CHECK(mac_logger_get_ap_list_len(&n_ap));
+    printf("AP LIST: \n");
+    for(i = 0; i < n_ap; ++i)
+    {
+        ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
+        printf("%02d) %s   channel=%d   sta_index=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index);
+    }
+    printf("%d aps\n\n", n_ap);
 }
 
 static esp_timer_handle_t dump_timer;
@@ -248,7 +331,7 @@ int do_mac_logger_init(int argc, char** argv)
 int do_mac_logger_start_dump(int argc, char** argv)
 {
     ESP_ERROR_CHECK(esp_timer_create(&dump_timer_args, &dump_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(dump_timer, 10000000));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(dump_timer, 3000000));
     return 0;
 }
 
