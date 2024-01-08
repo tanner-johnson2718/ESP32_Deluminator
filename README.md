@@ -54,7 +54,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * (2) All returns from component API functions **shall** be handled via `ESP_ERROR_CHECK` or `ESP_ERROR_CHECK_WITHOUT_ABORT`
     * Again minus trivial exceptions, see note above
 * (3) All components *should* have both implementation and theory doc in the header
-* (4) All component API functions **sha;l** have a summary describing their execution logic, a description of their input args with possible values, and all possible return values and their meaning
+* (4) All component API functions **shall** have a summary describing their execution logic, a description of their input args with possible values, and all possible return values and their meaning
     * While checking this its good to verify that the API function has appriopiatly strict check on input args and is returning error codes that are actually descriptive.
 * (5) All components *should* export a REPL test interface and this is the only context in which printf is allowed
 * (6) All component API functions **shall** start with the name of the component
@@ -64,7 +64,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- | --- |
-| eapol logger    |     |     |     |     |     |     |     |     |
+| eapol logger    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | encoder         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | HD44780         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |

@@ -28,11 +28,6 @@
 
 static const char* TAG = "WIFI";
 
-// Maintain a list of APs in order of RSSI
-static wifi_ap_record_t ap_info[sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE];
-static uint16_t ap_count = 0;
-
-
 static int8_t active_mac_target_ap = -1;
 
 
@@ -132,32 +127,6 @@ static void gp_timer_stop_n_destroy(void)
     ESP_LOGI(TAG, "GP Timer Stopped");
 }
 
-static void clear_active_mac_list(void)
-{
-    if(!xSemaphoreTake(active_mac_list_lock, 0))
-    {
-        ESP_LOGI(TAG, "clear mac list failed ..  busy");
-        return;
-    }
-
-    if(eapol_pkts_captured == EAPOL_NUM_PKTS && eapol_pkts_written_out == 0)
-    {
-        eapol_dump_to_disk();
-    }
-
-    active_mac_list_len = 0;
-    active_mac_target_ap = -1;
-    eapol_pkts_captured = 0;
-    eapol_pkts_written_out = 0;
-    eapol_pkt_lens[0] = 0;
-    eapol_pkt_lens[1] = 0;
-    eapol_pkt_lens[2] = 0;
-    eapol_pkt_lens[3] = 0;
-    eapol_pkt_lens[4] = 0;
-    eapol_pkt_lens[5] = 0;
-    assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-    ESP_LOGI(TAG, "Active MAC List Cleared");
-}
 
 //*****************************************************************************
 // PKT Sniffer Code
@@ -758,8 +727,3 @@ static void ui_scan_mac_ini(void)
     list_ssids_lcd();
     ESP_ERROR_CHECK_WITHOUT_ABORT(ui_unlock_cursor());
 }
-
-//*****************************************************************************
-// PUBLIC
-//*****************************************************************************
-
