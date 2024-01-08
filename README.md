@@ -45,6 +45,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
     * maybe make a python script for that 
 * Recreate the LCD Apps in their own file
 * Add a deauth DDoS attack
+* CAD!!!
 
 ## Coding Standards
 
@@ -67,7 +68,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | encoder         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | HD44780         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |     |  X  | N/A |  X  |  X  |     |

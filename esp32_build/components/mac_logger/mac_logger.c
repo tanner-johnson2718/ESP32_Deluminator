@@ -279,10 +279,20 @@ esp_err_t mac_logger_init(void)
     assert(xSemaphoreGive(lock) == pdTRUE);
 
     esp_err_t e = pkt_sniffer_add_filter(&f);
-
     ESP_LOGI(TAG, "inited");
-
     return e;
+}
+
+esp_err_t mac_logger_cler(void)
+{
+    if(_take_lock()) {return ESP_ERR_INVALID_STATE; }
+
+    sta_list_len = 0;
+    ap_list_len = 0;
+
+    ESP_LOGI(TAG, "Cleared Lists");
+    _release_lock();
+    return ESP_OK;
 }
 
 //*****************************************************************************

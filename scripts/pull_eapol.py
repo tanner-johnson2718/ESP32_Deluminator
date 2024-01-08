@@ -4,6 +4,7 @@ from scapy.layers.dot11 import Dot11
 import socket
 import sys
 import select
+import time
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(("192.168.4.1", 420))
@@ -73,3 +74,10 @@ for bstr in files:
     wrpcap('test.pcap', Dot11(p3), append=True)
     wrpcap('test.pcap', Dot11(p4), append=True)
     wrpcap('test.pcap', Dot11(p5), append=True)
+
+    while 1:
+        ready = select.select([sock], [], [], 3)
+        if ready[0]:
+            data = sock.recv(33)
+        else:
+            break

@@ -1,0 +1,7 @@
+menu "Eapol Logger Config"
+
+    config EAPOL_LOGGER_WAIT_MS
+        int "Max wat in ms for the lock"
+        default 10
+
+endmenu

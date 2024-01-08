@@ -35,29 +35,6 @@ static uint16_t ap_count = 0;
 
 static int8_t active_mac_target_ap = -1;
 
-// We allocate a single buffer to store a single WPA2 handshake. When scanning
-// for handshakes, we have a target AP which means we only need one handshake
-// to crack that AP. When all packets have been found we flush them to disk.
-// We also double check that if we have a good handshake that we do not clear
-// the in mem buffer unless its been flushed to disk. The in ram buffer is as
-// follows:
-//
-// |-----------|-----------|---------|---------|---------|---------|
-// | Assoc Req | Assoc Res | EAPOL 1 | EAPOL 2 | EAPOL 3 | EAPOL 4 |
-// |-----------|-----------|---------|---------|---------|---------|
-// 
-// Each of the 6 packet slots gets a 256 buffer. If the packet is smaller we
-// just pad the rest as we maintain the lengths of each packet. When dumping to
-// disk and sending over network the lengths are written first, fitting in a 
-// 2 byte integer, followed by the packet data with no padding.
-#define EAPOL_MAX_PKT_LEN 256
-#define EAPOL_NUM_PKTS    6
-#define EAPOl_SEMA_TIMEOUT_MS 10
-static uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
-static uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
-static uint8_t eapol_pkts_captured = 0;
-static uint8_t eapol_pkts_written_out = 0;
-static SemaphoreHandle_t eapol_lock;
 
 // We maintain a single timer to be used as a "poll n dump" function ie every
 // TIMER_DELAY_MS milliseconds execute a function that usually polls and sends
@@ -153,70 +130,6 @@ static void gp_timer_stop_n_destroy(void)
     gp_timer_running = 0;
 
     ESP_LOGI(TAG, "GP Timer Stopped");
-}
-
-//*****************************************************************************
-// AP List Accessor Funcs
-//*****************************************************************************
-
-static void update_ap_info()
-{
-    ESP_LOGI(TAG, "Scanning and Updating AP List");
-    uint16_t max_ap_count = DEFAULT_SCAN_LIST_SIZE;
-    esp_wifi_scan_start(NULL, true);
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&max_ap_count, ap_info));
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-    
-    if(ap_count >= DEFAULT_SCAN_LIST_SIZE)
-    {
-        ap_count = DEFAULT_SCAN_LIST_SIZE;
-    }
-
-    ESP_ERROR_CHECK(esp_wifi_clear_ap_list());
-
-    ESP_ERROR_CHECK(esp_wifi_scan_stop());
-}
-
-
-static void eapol_dump_to_disk(void)
-{
-    char path[MAX_SSID_LEN+1];
-
-    snprintf(path, MAX_SSID_LEN+1, "%s/%.15s.pkt", MOUNT_PATH, ap_info[active_mac_target_ap].ssid);
-    
-    ESP_LOGI(TAG, "Opening %s to writeout eapol pkts", path);
-    FILE* f = fopen(path, "w");
-    if(!f)
-    {
-        ESP_LOGE(TAG, "Failed to open %s - %s", path, strerror(errno));
-        fclose(f);
-        return;
-    }
-
-    size_t num_written = fwrite(eapol_pkt_lens, 1, 2*EAPOL_NUM_PKTS, f);
-    if(num_written != 2 * EAPOL_NUM_PKTS)
-    {
-        ESP_LOGE(TAG, "Failed to write EAPOL Header (%d / %d)", num_written, 2*EAPOL_NUM_PKTS);
-        fclose(f);
-        return;
-    }
-
-    uint8_t i;
-    for(i = 0; i < EAPOL_NUM_PKTS; ++i)
-    {
-        num_written = fwrite(eapol_buffer + i*EAPOL_MAX_PKT_LEN, 1, eapol_pkt_lens[i], f);
-        if(num_written != eapol_pkt_lens[i])
-        {
-            ESP_LOGE(TAG, "Failed to write EAPOL %d Pkt (%d / %d)", i, num_written, eapol_pkt_lens[i]);
-            fclose(f);
-            return;
-        }
-    }
-    
-    fclose(f);
-    ESP_LOGI(TAG, "Write out of EAPOL pkts successful!");
-    eapol_pkts_written_out = 1;
-
 }
 
 static void clear_active_mac_list(void)

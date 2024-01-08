@@ -19,6 +19,7 @@
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
 #include "mac_logger.h"
+#include "eapol_logger.h"
 
 static const char* TAG = "MAIN";
 
@@ -78,7 +79,7 @@ static void initialize_nvs(void);
 // outpul level globaly and specific to a module.
 //
 // We mainly use this REPL interface as a means of exporting test drivers that
-// can be driven on the command line and dumps its output over the serial
+// can be driven over the serial console and dumps its output over the serial
 // console
 //*****************************************************************************
 static int do_dump_event_log(int, char**);
@@ -149,6 +150,7 @@ void app_main(void)
     register_no_arg_cmd("mac_logger_start_dump", "Start Mac dump", &do_mac_logger_start_dump);
     register_no_arg_cmd("mac_logger_stop_dump", "Stop Mac dump", &do_mac_logger_stop_dump);
     register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init module", &do_mac_logger_init);
+    register_no_arg_cmd("eapol_logger_init", "Register the eapol logger with the pkt sniffer", &do_eapol_logger_init);
 
     // TCP File Server test driver repl functions
     register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);

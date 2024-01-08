@@ -1625,6 +1625,12 @@ CONFIG_LCD_ROWS=4
 # end of HD44780 LCD Configuration
 
 #
+# Eapol Logger Config
+#
+CONFIG_EAPOL_LOGGER_WAIT_MS=10
+# end of Eapol Logger Config
+
+#
 # Rotary encoders
 #
 CONFIG_RE_MAX=1
