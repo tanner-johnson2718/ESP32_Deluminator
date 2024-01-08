@@ -21,12 +21,8 @@
 
 #define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
-#define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
-#define EXAMPLE_ESP_WIFI_CHANNEL 1
-#define EXAMPLE_ESP_WIFI_PASS "abcd1234"
-#define EXAMPLE_MAX_STA_CONN 1
 
-#define MAC_LEN 6
+
 #define MAX_SSID_LEN 32
 #define MOUNT_PATH "/spiffs"
 
@@ -36,20 +32,8 @@ static const char* TAG = "WIFI";
 static wifi_ap_record_t ap_info[sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE];
 static uint16_t ap_count = 0;
 
-// Maintain an "active" mac list. That is we choose an AP to target and we
-// log every STA MAC that is associated with that AP. The active mac list gets
-// updated by the packet sniffer, scanning packets for STAs on an ap, WPA2
-// handshakes and strength of STAs
-struct sta
-{
-    uint8_t mac[MAC_LEN];
-    int8_t rssi;
-} typedef active_mac_t;
 
-static active_mac_t active_mac_list[sizeof(active_mac_t) * DEFAULT_SCAN_LIST_SIZE];
-static uint8_t active_mac_list_len = 0;
 static int8_t active_mac_target_ap = -1;
-static SemaphoreHandle_t active_mac_list_lock;
 
 // We allocate a single buffer to store a single WPA2 handshake. When scanning
 // for handshakes, we have a target AP which means we only need one handshake
@@ -193,104 +177,6 @@ static void update_ap_info()
     ESP_ERROR_CHECK(esp_wifi_scan_stop());
 }
 
-//*****************************************************************************
-// Active MAC List Accessor Functions
-//*****************************************************************************
-
-static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
-{
-    uint8_t i = 0;
-    for(; i < MAC_LEN; ++i)
-    {
-        if(m1[i]!=m2[i])
-        {
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
-static inline uint8_t* get_nth_mac(uint8_t n)
-{
-    if(n >= active_mac_list_len)
-    {
-        ESP_LOGE(TAG, "In get nth mac, out of bounds");
-        return NULL;
-    }
-
-    return (uint8_t*) &(active_mac_list[n]);
-}
-
-static inline int8_t get_nth_rssi(uint8_t n)
-{
-    if(n >= active_mac_list_len)
-    {
-        ESP_LOGE(TAG, "In get nth rssi, out of bounds");
-        return -1;
-    }
-
-    return active_mac_list[n].rssi;
-}
-
-static inline void set_nth_mac(uint8_t n, uint8_t* m1)
-{
-    if(n >= active_mac_list_len)
-    {
-        ESP_LOGE(TAG, "In set nth mac, out of bounds");
-        return;
-    }
-
-    uint8_t i;
-    for(i = 0; i < MAC_LEN; ++i)
-    {  
-        get_nth_mac(n)[i] = m1[i];
-    }
-
-}
-
-static inline void set_nth_rssi(uint8_t n, int8_t rssi)
-{
-     if(n >= active_mac_list_len)
-    {
-        ESP_LOGE(TAG, "In set nth rssi, out of bounds");
-        return;
-    }
-
-    active_mac_list[n].rssi = rssi;
-}
-
-static inline void insert_mac(uint8_t* m1, int8_t rssi)
-{
-    if(active_mac_list_len == DEFAULT_SCAN_LIST_SIZE)
-    {
-        ESP_LOGE(TAG, "ACTIVE MAC LIST FULL");
-        return;
-    }
-
-    if(!xSemaphoreTake(active_mac_list_lock, 0))
-    {
-        // ESP_LOGI(TAG, "insert mac failed ..  busy");
-        return;
-    }
-
-    uint8_t i = 0;
-    for(; i < active_mac_list_len; ++i)
-    {
-        if(mac_is_eq(m1, get_nth_mac(i)))
-        {
-            set_nth_rssi(i, rssi);
-            assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-            return;
-        }
-    }
-
-    ++active_mac_list_len;
-    set_nth_mac(active_mac_list_len-1, m1);    
-    set_nth_rssi(active_mac_list_len-1, rssi);
-    assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-
-}
 
 static void eapol_dump_to_disk(void)
 {
@@ -964,60 +850,3 @@ static void ui_scan_mac_ini(void)
 // PUBLIC
 //*****************************************************************************
 
-void init_wifi(void)
-{
-        // ESP NET IF init
-    esp_netif_t *sta_netif = NULL;
-    esp_netif_t *ap_netif = NULL;
-    ESP_ERROR_CHECK(esp_netif_init());
-    sta_netif = esp_netif_create_default_wifi_sta();
-    ap_netif = esp_netif_create_default_wifi_ap();
-    assert(ap_netif);
-    assert(sta_netif);
-    
-    // Wifi early init config (RX/TX buffers etc)
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    // Handle dem wifi events on the default event loop
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &wifi_event_handler,
-                                                        NULL,
-                                                        NULL));
-
-    wifi_config_t wifi_config = {
-        .ap = {
-            .ssid = EXAMPLE_ESP_WIFI_SSID,
-            .ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID),
-            .channel = EXAMPLE_ESP_WIFI_CHANNEL,
-            .password = EXAMPLE_ESP_WIFI_PASS,
-            .max_connection = EXAMPLE_MAX_STA_CONN,
-            .authmode = WIFI_AUTH_WPA2_PSK,
-            .pmf_cfg = {
-                    .required = false,
-            },
-        },
-    };
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    uint8_t mac[6];
-    ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
-    ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-
-    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
-    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-    active_mac_list_lock = xSemaphoreCreateBinary();
-    eapol_lock = xSemaphoreCreateBinary();
-
-    assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-    assert(xSemaphoreGive(eapol_lock) == pdTRUE);
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini));
-}

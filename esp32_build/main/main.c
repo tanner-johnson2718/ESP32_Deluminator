@@ -1,3 +1,5 @@
+// High level system overview...
+
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
@@ -14,9 +16,9 @@
 #include "heap_memory_layout.h"
 
 #include "user_interface.h"
-#include "wifi.h"
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
+#include "mac_logger.h"
 
 static const char* TAG = "MAIN";
 
@@ -64,7 +66,7 @@ static void initialize_nvs(void);
 //*****************************************************************************
 // One of the main components of the ESP32 Deluminator is a thin wrapper for 
 // the esp idf console library. This provides a REPL over the USB serial 
-// console which cna be accesed by running idf.py -p /dev/ttyUSB0. 
+// console which cna be accesed by running idf.py -p /dev/ttyUSB0 monitor. 
 // 
 // We use the base API but do not use its arg parsing frame work and we impose
 // arg parsing on the writer of the repl func. To register a REPL function use
@@ -85,6 +87,17 @@ static int do_free(int, char**);
 static int do_restart(int, char**);
 static int do_tasks(int, char**);
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
+
+
+//*****************************************************************************
+// Wifi ... todo doc
+//*****************************************************************************
+#define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
+#define EXAMPLE_ESP_WIFI_CHANNEL 1
+#define EXAMPLE_ESP_WIFI_PASS "abcd1234"
+#define EXAMPLE_MAX_STA_CONN 1
+
+static void init_wifi(void);
 
 void app_main(void)
 {
@@ -117,18 +130,23 @@ void app_main(void)
     register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
 
     // Wifi test driver repl functions
+    /*
     register_no_arg_cmd("scan_ap", "Scan for all Wifi APs", &do_repl_scan_ap);
     register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
     register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
     register_no_arg_cmd("deauth", "Send Deauth Pkt to Active while scanner running", &do_deauth);
+    */
 
-    // Pkt Sniffer test driver repl functions
+    // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
     register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
     register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
+    register_no_arg_cmd("mac_logger_start_dump", "Start Mac dump", &do_mac_logger_start_dump);
+    register_no_arg_cmd("mac_logger_stop_dump", "Stop Mac dump", &do_mac_logger_stop_dump);
+    register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init module", &do_mac_logger_init);
 
-    // TCP File Server test driver repl commands
+    // TCP File Server test driver repl functions
     register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
     register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
@@ -195,6 +213,69 @@ static void initialize_nvs(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+}
+
+//*****************************************************************************
+// Init Wifi Module
+//*****************************************************************************
+void init_wifi(void)
+{
+        // ESP NET IF init
+    esp_netif_t *sta_netif = NULL;
+    esp_netif_t *ap_netif = NULL;
+    ESP_ERROR_CHECK(esp_netif_init());
+    sta_netif = esp_netif_create_default_wifi_sta();
+    ap_netif = esp_netif_create_default_wifi_ap();
+    assert(ap_netif);
+    assert(sta_netif);
+    
+    // Wifi early init config (RX/TX buffers etc)
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Handle dem wifi events on the default event loop
+    /*
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler,
+                                                        NULL,
+                                                        NULL));
+    */
+
+    wifi_config_t wifi_config = {
+        .ap = {
+            .ssid = EXAMPLE_ESP_WIFI_SSID,
+            .ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID),
+            .channel = EXAMPLE_ESP_WIFI_CHANNEL,
+            .password = EXAMPLE_ESP_WIFI_PASS,
+            .max_connection = EXAMPLE_MAX_STA_CONN,
+            .authmode = WIFI_AUTH_WPA2_PSK,
+            .pmf_cfg = {
+                    .required = false,
+            },
+        },
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    uint8_t mac[6];
+    ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
+    ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+
+    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
+    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
+                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+    // active_mac_list_lock = xSemaphoreCreateBinary();
+    // eapol_lock = xSemaphoreCreateBinary();
+
+    // assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
+    // assert(xSemaphoreGive(eapol_lock) == pdTRUE);
+
+    // ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini));
+    // ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini));
 }
 
 //*****************************************************************************

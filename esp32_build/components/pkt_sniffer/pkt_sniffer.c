@@ -112,6 +112,12 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
    
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
 
+    if(p->rx_ctrl.rx_state != 0)
+    {
+        // ESP_LOGI(TAG, "malformed packet");
+        return;
+    }
+
     uint8_t* dst = p->payload + 4;
     uint8_t* src = p->payload + 10;
     uint8_t* ap =  p->payload + 16;
@@ -150,7 +156,7 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     }
 
     assert(xSemaphoreGive(lock) == pdTRUE);
-}    uint8_t ret = 0;
+}
 
 void _pkt_sniffer_init(void)
 {
@@ -395,6 +401,7 @@ int do_pkt_sniffer_launch(int argc, char** argv)
     if(argc != 2)
     {
         printf("Usage: pkt_sniffer_launch <channel>");
+        return 1;
     }
 
     wifi_promiscuous_filter_t filt = 

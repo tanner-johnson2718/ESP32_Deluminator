@@ -1,11 +1,11 @@
 menu "UI Config"
 
     config UI_NUM_CMDS
-    int "UI Max number of commands"
-    range 4 64
-    default 16
-    help
-        Max number of ui commands
+        int "UI Max number of commands"
+        range 4 64
+        default 16
+        help
+            Max number of ui commands
 
 
     config UI_NUM_LINE_BUFF

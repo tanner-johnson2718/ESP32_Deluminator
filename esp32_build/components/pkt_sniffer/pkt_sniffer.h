@@ -18,6 +18,7 @@
 //        pkt_sniffer_filtered_cb_t type.
 //
 
+#pragma once
 #include "esp_wifi.h"
 
 //*****************************************************************************
