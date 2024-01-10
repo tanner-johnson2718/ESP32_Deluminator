@@ -22,21 +22,6 @@
 #include "esp_wifi.h"
 
 //*****************************************************************************
-// WPA2 Handshake index. One of the main tasks of this component is to capture
-// and identify WPA2 handshake packets.
-//*****************************************************************************
-enum WPA2_Handshake_Index
-{
-    WPA2_HS_ASSOC_REQ,
-    WPA2_HS_ASSOC_RES,
-    EAPOL_HS_1,
-    EAPOL_HS_2,
-    EAPOL_HS_3,
-    EAPOL_HS_4,
-    HS_NONE             // Identifies the lack of relavanet WPA2 Hand shake pkt
-} typedef WPA2_Handshake_Index_t;
-
-//*****************************************************************************
 // Filter CB Pairs. The following typedefs give structure to our further
 // filtered packet sniffer. When launching the sniffer you have to set a 
 // channel and packet type mask. We give the following type defs so you can 
@@ -45,7 +30,6 @@ enum WPA2_Handshake_Index
 //    -> AP  MAC address
 //    -> SRC MAC address
 //    -> DST MAC address
-//    -> is EAPOL or of interest in a WPA2 handshake
 //
 // The filter is of positive nomenclature i.e. your callback will only be 
 // called if it matches the params you supply. For each MAC address there is an
@@ -53,12 +37,10 @@ enum WPA2_Handshake_Index
 // addr to take place.
 //*****************************************************************************
 typedef void (*pkt_sniffer_cb_t)(wifi_promiscuous_pkt_t* p, 
-                                 wifi_promiscuous_pkt_type_t type, 
-                                 WPA2_Handshake_Index_t eapol);
+                                 wifi_promiscuous_pkt_type_t type);
 
 struct pkt_sniffer_filtered_cb
 {
-    uint8_t eapol_only;
     uint8_t ap_active;
     uint8_t ap[6];
     uint8_t src_active;

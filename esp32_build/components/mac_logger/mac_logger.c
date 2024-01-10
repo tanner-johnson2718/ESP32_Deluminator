@@ -12,6 +12,7 @@ static sta_t sta_list[CONFIG_MAC_LOGGER_MAX_STAS];
 static int16_t sta_list_len = 0;
 static ap_t ap_list[CONFIG_MAC_LOGGER_MAX_APS];
 static int8_t ap_list_len = 0;
+static uint8_t one_time_init_done = 0;
 
 static const char* TAG = "MAC LOGGER";
 
@@ -19,8 +20,14 @@ static const char* TAG = "MAC LOGGER";
 // Lock Helpers
 //*****************************************************************************
 
-uint8_t _take_lock(void)
+static uint8_t _take_lock(void)
 {
+    if(!one_time_init_done)
+    {
+        ESP_LOGE(TAG, "in take lock, not inited");
+        return 1;
+    }
+
     if(!xSemaphoreTake(lock, CONFIG_MAC_LOGGER_WAIT_MS / portTICK_PERIOD_MS))
     {
         ESP_LOGE(TAG, "lock timeout");
@@ -30,8 +37,13 @@ uint8_t _take_lock(void)
     return 0;
 }
 
-void _release_lock(void)
+static void _release_lock(void)
 {
+    if(!one_time_init_done)
+    {
+        ESP_LOGE(TAG, "in release lock, not inited");
+        return;
+    }
     assert(xSemaphoreGive(lock) == pdTRUE);
 }
 
@@ -251,8 +263,7 @@ esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap)
 }
 
 void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
-                   wifi_promiscuous_pkt_type_t type, 
-                   WPA2_Handshake_Index_t eapol)
+                   wifi_promiscuous_pkt_type_t type)
 {
     if(!(type == WIFI_PKT_DATA || type == WIFI_PKT_MGMT))
     {
@@ -275,15 +286,20 @@ esp_err_t mac_logger_init(void)
     pkt_sniffer_filtered_cb_t f = {0};
     f.cb = mac_logger_cb;
 
-    lock = xSemaphoreCreateBinary();
-    assert(xSemaphoreGive(lock) == pdTRUE);
+    if(!one_time_init_done)
+    {
+        lock = xSemaphoreCreateBinary();
+        assert(xSemaphoreGive(lock) == pdTRUE);
+        one_time_init_done = 1;
+        ESP_LOGI(TAG, "lock inited");
+    }
 
     esp_err_t e = pkt_sniffer_add_filter(&f);
-    ESP_LOGI(TAG, "inited");
+    ESP_LOGI(TAG, "filter added");
     return e;
 }
 
-esp_err_t mac_logger_cler(void)
+esp_err_t mac_logger_clear(void)
 {
     if(_take_lock()) {return ESP_ERR_INVALID_STATE; }
 
@@ -320,7 +336,7 @@ void dump(void* args)
     for(i = 0; i < n_ap; ++i)
     {
         ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
-        printf("%02d) %s   channel=%d   sta_index=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index);
+        printf("%02d) %-20s   channel=%d   sta_index=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index);
     }
     printf("%d aps\n\n", n_ap);
 }

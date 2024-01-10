@@ -19,19 +19,8 @@ pkt_sniffer_filtered_cb_t filtered_cbs[CONFIG_PKT_MAX_FILTERS];
 static SemaphoreHandle_t lock;
 
 //*****************************************************************************
-// First line CB code and EAPOL Packet Parsing
+// First line CB code
 //*****************************************************************************
-
-#define SEQ_NUM_LB        0x16
-#define SEQ_NUM_LB_MASK   0xF0
-#define SEQ_NUM_LB_RSHIFT 0x4
-#define SEQ_NUM_UB        0x17
-#define SEQ_NUM_UB_MASK   0xFF
-#define SEQ_NUM_UB_LSHIFT 0x8
-#define TO_DS_BYTE        0x1
-#define TO_DS_MASK        0x1
-#define FROM_DS_BYTE      0x1
-#define FROM_DS_MASK      0x2
 
 static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
 {
@@ -47,65 +36,6 @@ static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
     return 1;
 }
 
-static inline int16_t get_seq_num(uint8_t* pkt, uint16_t len)
-{
-    int16_t lb = (((int16_t)pkt[SEQ_NUM_LB]) & SEQ_NUM_LB_MASK) >> SEQ_NUM_LB_RSHIFT;
-    int16_t ub = (((int16_t)pkt[SEQ_NUM_UB]) & SEQ_NUM_UB_MASK) << SEQ_NUM_UB_LSHIFT; 
-
-    return lb + ub;
-}
-
-static inline uint8_t get_to_ds(uint8_t* pkt)
-{
-    return !(!(pkt[TO_DS_BYTE] & TO_DS_MASK));
-}
-
-static inline uint8_t get_from_ds(uint8_t* pkt)
-{
-    return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
-}
-
-static inline uint8_t get_type(uint8_t* pkt)
-{
-    return (pkt[0] & 0x0c) >> 2;
-}
-
-static inline uint8_t get_subtype(uint8_t* pkt)
-{
-    return (pkt[0] >> 4) & 0x0F;
-}
-
-static inline WPA2_Handshake_Index_t eapol_pkt_parse(uint8_t* p, uint16_t len)
-{
-
-    if(get_type(p) == 0 && get_subtype(p) == 0)
-    {
-        // assoc request
-        return WPA2_HS_ASSOC_REQ;
-    }
-
-    if(get_type(p) == 0 && get_subtype(p) == 1)
-    {
-        // assoc response
-        return WPA2_HS_ASSOC_RES;
-    }
-
-
-    if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
-    {
-        // eapol
-        int16_t s = get_seq_num(p, len);
-        uint8_t to = get_to_ds(p);
-        uint8_t from = get_from_ds(p);
-
-        if     (s == 0 && to == 0 && from == 1) { return EAPOL_HS_1; }
-        else if(s == 0 && to == 1 && from == 0) { return EAPOL_HS_2; }
-        else if(s == 1 && to == 0 && from == 1) { return EAPOL_HS_3; }
-        else if(s == 1 && to == 1 && from == 0) { return EAPOL_HS_4; }
-    }
-
-    return HS_NONE;
-}
 
 static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
@@ -121,8 +51,7 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     uint8_t* dst = p->payload + 4;
     uint8_t* src = p->payload + 10;
     uint8_t* ap =  p->payload + 16;
-    WPA2_Handshake_Index_t eapol = eapol_pkt_parse(p->payload, p->rx_ctrl.sig_len);
-
+ 
     if(!xSemaphoreTake(lock, 0))
     {
         ESP_LOGE(TAG, "Timeout trying to parse packet");
@@ -132,11 +61,6 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
     {
-        if(eapol == HS_NONE && filtered_cbs[i].eapol_only)
-        {
-            continue;
-        }
-
         if(filtered_cbs[i].ap_active &&  !mac_is_eq(ap, filtered_cbs[i].ap))
         {
             continue;
@@ -152,7 +76,7 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
             continue;
         }
 
-        filtered_cbs[i].cb(p, type, eapol);
+        filtered_cbs[i].cb(p, type);
     }
 
     assert(xSemaphoreGive(lock) == pdTRUE);
@@ -294,15 +218,14 @@ esp_err_t pkt_sniffer_kill(void)
 // REPL Test Functions
 //*****************************************************************************
 
-static void _cb(wifi_promiscuous_pkt_t* p, 
-                wifi_promiscuous_pkt_type_t type, 
-                WPA2_Handshake_Index_t eapol)
+static inline uint8_t get_subtype(uint8_t* pkt)
 {
-    if(eapol != HS_NONE)
-    {
-        printf("EAPOL %d/5\n", (int) eapol);
-        return;
-    }
+    return (pkt[0] >> 4) & 0x0F;
+}
+
+static void _cb(wifi_promiscuous_pkt_t* p, 
+                wifi_promiscuous_pkt_type_t type)
+{
 
     printf("TYPE=");
     switch(type)
@@ -359,9 +282,9 @@ static int sscanf_helper(uint8_t* mac, char* s)
 
 int do_pkt_sniffer_add_filter(int argc, char** argv)
 {
-    if(argc != 5)
+    if(argc != 4)
     {
-        printf("Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL> <eapool or NULL>");
+        printf("Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL>");
         return 1;
     }
 
@@ -382,11 +305,6 @@ int do_pkt_sniffer_add_filter(int argc, char** argv)
     {
         filt_cb.src_active = 1;
         if(sscanf_helper(filt_cb.src, argv[3])) {return 1;}
-    }
-
-    if(strcmp(argv[4], "NULL") != 0)
-    {
-        filt_cb.eapol_only = 1;
     }
 
     filt_cb.cb = _cb;

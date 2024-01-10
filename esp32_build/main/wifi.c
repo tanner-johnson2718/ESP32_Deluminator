@@ -19,7 +19,6 @@
 #include "tcp_file_server.h"
 #include "pkt_sniffer.h"
 
-#define TIMER_DELAY_MS 1000
 #define DEFAULT_SCAN_LIST_SIZE 16
 
 
@@ -34,13 +33,6 @@ static int8_t active_mac_target_ap = -1;
 // We maintain a single timer to be used as a "poll n dump" function ie every
 // TIMER_DELAY_MS milliseconds execute a function that usually polls and sends
 // data to the serial console or the lcd
-static esp_timer_handle_t gp_timer;
-static esp_timer_create_args_t gp_timer_args = 
-{
-    .callback = NULL,
-    .name = "Wifi GP Timer"
-};
-static uint8_t gp_timer_running = 0;
 
 int8_t client_id = -1;
 uint8_t client_mac[MAC_LEN];

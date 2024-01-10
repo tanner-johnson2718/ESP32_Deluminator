@@ -51,9 +51,9 @@ struct ap
 
 //*****************************************************************************
 // mac_logger_init) Register the mac_logger_cb with the pkt_sniffer and init
-//                  the lock. note that if the pkt sniffer filters are cleared
-//                  you will need to re add it with the provided call back and
-//                  no mac filters set on the filtered_cb struct.
+//                  the lock. If one clears the pkt filters, which deletes
+//                  the mac logger call back, then this can be recalled to
+//                  re-register it.
 //
 // Returns) What ever pkt_sniffer_add_filter returns. The init of the semaphore
 //          is asserted true.
@@ -116,16 +116,6 @@ esp_err_t mac_logger_get_sta(int16_t sta_list_index, sta_t* sta);
 //*****************************************************************************
 esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap);
 
-//*****************************************************************************
-// In the event one needs to re register this bad larry with the pkt sniffer
-// we give it global linkage. This would only be required if one clears the
-// pkt sniffer filters. Bes sure to include both MGMT and DATA packets when
-// re adding to the filered cb list in the pkt sniffer.
-//*****************************************************************************
-void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
-                   wifi_promiscuous_pkt_type_t type, 
-                   WPA2_Handshake_Index_t eapol);
-
 
 //*****************************************************************************
 // mac_logger_clear) reset both the sta and ap list
@@ -133,7 +123,7 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
 // Return) OK            - Successfully cleared the lists
 //         INVALID_STATE - couldn't get lock
 //*****************************************************************************
-esp_err_t mac_logger_cler(void);
+esp_err_t mac_logger_clear(void);
 
 //*****************************************************************************
 // REPL Test functions

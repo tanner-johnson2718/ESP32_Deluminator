@@ -111,6 +111,9 @@ static void init_wifi(void);
 extern void lcd_fsexp_init(void);
 extern void lcd_fsexp_cb(uint8_t index);
 extern void lcd_fsexp_fini(void);
+extern void lcd_signal_sniffer_init(void);
+extern void lcd_signal_sniffer_cb(uint8_t index);
+extern void lcd_signal_sniffer_fini(void);
 
 void app_main(void)
 {
@@ -158,6 +161,7 @@ void app_main(void)
 
     // register our ui apps
     ESP_ERROR_CHECK(ui_add_cmd("FS EXP" , lcd_fsexp_init, lcd_fsexp_cb, lcd_fsexp_fini));
+    ESP_ERROR_CHECK(ui_add_cmd("Singal Hound v6.9", lcd_signal_sniffer_init, lcd_signal_sniffer_cb, lcd_signal_sniffer_fini));
 
     // Start the REPL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();

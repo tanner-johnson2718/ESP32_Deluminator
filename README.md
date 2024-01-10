@@ -38,13 +38,29 @@ We do not support or condone the use of any attacks on non consenting parties. P
 ```
 
 ## TODO
-* Main needs some more love
+* Main needs some more doc
+    * Wifi
+    * High level systems overview
 * Finish the table below
+    * DOC
+    * MEM ANAL
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
 * Recreate the LCD Apps in their own file
-* Add a deauth DDoS attack
+    * signal sniffer
+    * WPA2 Key Collecter
+        * Passive     - Just listen
+        * Targeted    - Send one to a specific
+        * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
+    * Deauth DoS attack
+        * Targeted  - Target single known STA
+        * Agro 1    - For every pkt sniffed respond with a deauth
+        * Agro Inf  - Send broadcast deauths at mach jesus
 * Push attacks doc to headers
+* The way we save eapol keys and the way the way the tcp server work is jank
+* Deauthg repl
+* IP Logger??
+* Check if a network has PMF
 
 ## Coding Standards
 

@@ -28,25 +28,13 @@
 
 //*****************************************************************************
 // eapol_logger_init) Register the eapol_logger_cb with the pkt_sniffer and init
-//                    the lock. note that if the pkt sniffer filters are cleared
-//                    you will need to re add it with the provided call back and
-//                    no mac filters and eapol only set on the filtered_cb 
-//                    struct
+//                    the lock. This init function can be recalled to re ad the
+//                    eapol filter back to the list of filters in pkt logger.
 //
 // Returns) What ever pkt_sniffer_add_filter returns. The init of the semaphore
 //          is asserted true.
 //*****************************************************************************
 esp_err_t eapol_logger_init(void);
-
-//*****************************************************************************
-// In the event one needs to re register this bad larry with the pkt sniffer
-// we give it global linkage. This would only be required if one clears the
-// pkt sniffer filters. Bes sure to include both MGMT and DATA packets when
-// re adding to the filered cb list in the pkt sniffer.
-//*****************************************************************************
-void eapol_logger_cb(wifi_promiscuous_pkt_t* p, 
-                     wifi_promiscuous_pkt_type_t type, 
-                     WPA2_Handshake_Index_t eapol);
 
 //*****************************************************************************
 // REPL
