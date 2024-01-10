@@ -38,14 +38,13 @@ We do not support or condone the use of any attacks on non consenting parties. P
 ```
 
 ## TODO
-
 * Main needs some more love
 * Finish the table below
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
 * Recreate the LCD Apps in their own file
 * Add a deauth DDoS attack
-* CAD!!!
+* Push attacks doc to headers
 
 ## Coding Standards
 
@@ -71,7 +70,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |     |  X  | N/A |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |     |  X  |  X  |     |
 
 # Wiring and 3D Printed Case
 

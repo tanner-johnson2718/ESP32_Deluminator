@@ -73,6 +73,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "esp_err.h"
 
 typedef void (*command_cb_t)(void);
 typedef void (*on_press_cb_t)(uint8_t line_index);

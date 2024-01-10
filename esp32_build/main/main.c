@@ -104,6 +104,14 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 
 static void init_wifi(void);
 
+//*****************************************************************************
+// External LCD Apps. We gave each app its own C file in the main dir and just
+// register them ui system here
+//*****************************************************************************`
+extern void lcd_fsexp_init(void);
+extern void lcd_fsexp_cb(uint8_t index);
+extern void lcd_fsexp_fini(void);
+
 void app_main(void)
 {
     // Dont mix up this order ... it matters
@@ -134,14 +142,6 @@ void app_main(void)
     register_no_arg_cmd("press", "Simulate short press", &do_press);
     register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
 
-    // Wifi test driver repl functions
-    /*
-    register_no_arg_cmd("scan_ap", "Scan for all Wifi APs", &do_repl_scan_ap);
-    register_no_arg_cmd("scan_mac_start", "Start a scan of stations on an AP: sta_scan_start <ap_index from scan>", &do_repl_scan_mac_start);
-    register_no_arg_cmd("scan_mac_stop", "Stop a scan of stations on an AP", &do_repl_scan_mac_stop);
-    register_no_arg_cmd("deauth", "Send Deauth Pkt to Active while scanner running", &do_deauth);
-    */
-
     // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
     register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
@@ -155,6 +155,9 @@ void app_main(void)
     // TCP File Server test driver repl functions
     register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
     register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
+
+    // register our ui apps
+    ESP_ERROR_CHECK(ui_add_cmd("FS EXP" , lcd_fsexp_init, lcd_fsexp_cb, lcd_fsexp_fini));
 
     // Start the REPL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
