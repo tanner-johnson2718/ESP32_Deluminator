@@ -26,6 +26,10 @@
 // indexes in each struct pointing back to one another and if a MAC is not an
 // AP then we set that index to -1.
 
+// As an addendum we added later, we also have second AP list index we maintain.
+// That is the ap assoc index. This index will point to the AP in the AP list
+// for which a sta is connected to or associated with.
+
 
 #define SSID_MAX_LEN 33
 #define MAC_LEN 6
@@ -35,6 +39,7 @@ struct sta
     uint8_t mac[MAC_LEN];     // MAC Addr
     int8_t rssi;              // Last Known Signal Strength
     int8_t ap_list_index;     // -1 if not AP
+    int8_t ap_assoc_index;    // -1 if not assoc traffic found
 } typedef sta_t;
 
 struct ap
@@ -42,6 +47,7 @@ struct ap
     uint8_t ssid[SSID_MAX_LEN];
     uint8_t channel;
     int16_t sta_list_index;
+    uint8_t num_assoc_stas;
 } typedef ap_t;
 
 // Packet Structures) 
@@ -53,12 +59,17 @@ struct ap
 // mac_logger_init) Register the mac_logger_cb with the pkt_sniffer and init
 //                  the lock. If one clears the pkt filters, which deletes
 //                  the mac logger call back, then this can be recalled to
-//                  re-register it.
+//                  re-register it. WARNING, only recall this init func if
+//                  youve cleared the pkt sniffer funcs.
+//
+// ap_mac) Optional AP mac filter. If not NULL, the mac logger will only add
+//         stas that are sending traffic whose AP mac addr field matches that
+//         that is passed.
 //
 // Returns) What ever pkt_sniffer_add_filter returns. The init of the semaphore
 //          is asserted true.
 //*****************************************************************************
-esp_err_t mac_logger_init(void);
+esp_err_t mac_logger_init(uint8_t* ap_mac);
 
 //*****************************************************************************
 // mac_logger_sta_list_len) Put the current sta list in the passed pointer

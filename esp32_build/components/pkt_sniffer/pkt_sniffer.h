@@ -1,6 +1,6 @@
 // Packet Sniffer. The base esp32 promicious cb system only allows for
 // filtering on packet type and some sub types. We add an extra layer of 
-// filtering with this component. 
+// filtering of promiscious packets with this component. 
 //
 // Assumptions) We assume that this component has unfeddered and uninterrupted
 //              access to the WHOLE wifi chip. No other tasks should be running

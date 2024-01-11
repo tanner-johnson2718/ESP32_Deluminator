@@ -89,7 +89,25 @@ static inline void set_nth_ap_index(int16_t n, int8_t _ap_index)
     sta_list[n].ap_list_index = _ap_index;
 }
 
-static inline void insert(uint8_t* m1, int8_t rssi)
+static inline void set_nth_ap_assoc_index(int16_t n, uint8_t* ap_mac)
+{
+
+    int8_t i, _ap_assoc_index = -1;
+    for(i = 0; i < ap_list_len; ++i)
+    {
+        uint8_t* test_mac = sta_list[ap_list[i].sta_list_index].mac;
+        if(mac_is_eq(ap_mac,test_mac))
+        {
+            _ap_assoc_index = i;
+            ap_list[i].num_assoc_stas++;
+            break;
+        }
+    }
+
+    sta_list[n].ap_assoc_index = _ap_assoc_index;
+}
+
+static inline void insert(uint8_t* m1, int8_t rssi, uint8_t* ap_mac)
 {
     if(sta_list_len == CONFIG_MAC_LOGGER_MAX_STAS)
     {
@@ -114,6 +132,7 @@ static inline void insert(uint8_t* m1, int8_t rssi)
     set_nth_mac(sta_list_len-1, m1);    
     set_nth_rssi(sta_list_len-1, rssi);
     set_nth_ap_index(sta_list_len-1, -1);
+    set_nth_ap_assoc_index(sta_list_len -1, ap_mac);
     _release_lock();
 }
 
@@ -178,6 +197,7 @@ static inline void insert_ap(wifi_promiscuous_pkt_t* p)
         ap->channel = p->rx_ctrl.channel;
 
         ap->sta_list_index = i;
+        ap->num_assoc_stas = 0;
         set_nth_ap_index(i, ap_list_len);
 
         ++ap_list_len;
@@ -271,9 +291,10 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
     }
 
     uint8_t* src = p->payload + 10;
+    uint8_t* ap_mac = p->payload + 16;
 
-    insert(src, p->rx_ctrl.rssi);
-
+    insert(src, p->rx_ctrl.rssi, ap_mac);
+    
     if(type == WIFI_PKT_MGMT && ((get_subtype(p->payload) == 8) || get_subtype(p->payload) == 5))
     {
         insert_ap(p);
@@ -281,10 +302,16 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
 
 }
 
-esp_err_t mac_logger_init(void)
+esp_err_t mac_logger_init(uint8_t* ap_mac)
 {
     pkt_sniffer_filtered_cb_t f = {0};
     f.cb = mac_logger_cb;
+
+    if(ap_mac != NULL)
+    {
+        f.ap_active = 1;
+        memcpy(f.ap, ap_mac, 6);
+    }
 
     if(!one_time_init_done)
     {
@@ -327,7 +354,7 @@ void dump(void* args)
     for(i = 0; i < n; ++i)
     {
         ESP_ERROR_CHECK(mac_logger_get_sta(i, &sta));
-        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index);
+        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
     }
     printf("%d stas\n\n", n);
 
@@ -336,7 +363,7 @@ void dump(void* args)
     for(i = 0; i < n_ap; ++i)
     {
         ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
-        printf("%02d) %-20s   channel=%d   sta_index=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index);
+        printf("%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
     }
     printf("%d aps\n\n", n_ap);
 }
@@ -350,7 +377,7 @@ static esp_timer_create_args_t dump_timer_args =
 
 int do_mac_logger_init(int argc, char** argv)
 {
-    mac_logger_init();
+    mac_logger_init(NULL);
     return 0;
 }
 
