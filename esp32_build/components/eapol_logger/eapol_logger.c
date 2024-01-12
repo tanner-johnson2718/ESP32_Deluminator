@@ -282,10 +282,16 @@ void eapol_logger_cb(wifi_promiscuous_pkt_t* p,
     _release_lock();
 }
 
-esp_err_t eapol_logger_init(void)
+esp_err_t eapol_logger_init(uint8_t* ap_mac)
 {
     pkt_sniffer_filtered_cb_t f = {0};
     f.cb = eapol_logger_cb;
+
+    if(ap_mac != NULL)
+    {
+        f.ap_active = 1;
+        memcpy(f.ap, ap_mac, 6);
+    }
 
     if(!one_time_init_done)
     {
@@ -306,6 +312,6 @@ esp_err_t eapol_logger_init(void)
 
 int do_eapol_logger_init(int argc, char** argv)
 {
-    ESP_ERROR_CHECK(eapol_logger_init());
+    ESP_ERROR_CHECK(eapol_logger_init(NULL));
     return 0;
 }

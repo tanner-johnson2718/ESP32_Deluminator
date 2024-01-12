@@ -24,11 +24,11 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | Rotary Enc. | LCD |    | File Serv |  |      PKT Sniff     |  | WSL ByPass |
 |-------------------|    |-----------|  |--------------------|  |------------|
 
-|---------------------|  |----------------------------------------------------|
-|        Main         |  |                         Wifi                       |
-|---------------------|  |----------------------------------------------------|
-| NVS | SPIFFS | REPL |  |            STA            |            AP          |
-|---------------------|  |----------------------------------------------------|
+|---------------------------------|   |---------------------------------------|
+|              Main               |   |      LCD Attack / Util UI Apps        |
+|---------------------------------|   |---------------------------------------|
+| NVS | SPIFFS | REPL | STA | AP  |
+|---------------------------------|
 ```
 
 ## TODO
@@ -41,9 +41,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
 * Recreate the LCD Apps in their own file
-    * signal sniffer
     * WPA2 Key Collecter
-        * Passive     - Just listen
         * Targeted    - Send one to a specific
         * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
     * Deauth DoS attack
@@ -51,12 +49,18 @@ We do not support or condone the use of any attacks on non consenting parties. P
         * Agro 1    - For every pkt sniffed respond with a deauth
         * Agro Inf  - Send broadcast deauths at mach jesus
 * Push attacks doc to headers
-* The way we save eapol keys and the way the way the tcp server work is jank
 * Deauthg repl
-* IP Logger??
+* update display events could also be event based
+* REPL clear FS
+
+### v0.2
+* IP Logger
 * Check if a network has PMF
 * power analysis
-* Make the pkt sniffer module use a event queue??
+* The way we save eapol keys and the way the way the tcp server work is jank
+* EAPOL logger may have issues if multiple come in or only partial come in
+* Make AP hidden
+
 
 ## Coding Standards
 

@@ -34,7 +34,7 @@
 // Returns) What ever pkt_sniffer_add_filter returns. The init of the semaphore
 //          is asserted true.
 //*****************************************************************************
-esp_err_t eapol_logger_init(void);
+esp_err_t eapol_logger_init(uint8_t* ap_mac);
 
 //*****************************************************************************
 // REPL
