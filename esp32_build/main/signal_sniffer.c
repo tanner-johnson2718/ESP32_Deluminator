@@ -12,12 +12,11 @@
 #include "user_interface.h"
 #include "mac_logger.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 
 #define TIMER_DELAY_MS 1000
 #define SCAN_TIME_ON_EACH_CHANNEL_MS 3000
-
-static const char* TAG = "LCD Signal Sniffer";
 
 void timer_func(void* args);
 static esp_timer_handle_t gp_timer;
@@ -27,7 +26,12 @@ static esp_timer_create_args_t gp_timer_args =
     .name = "Wifi GP Timer"
 };
 static uint8_t gp_timer_running = 0;
+static int8_t target_ap = -1;
 
+static wifi_promiscuous_filter_t filt = 
+{
+    .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_MGMT
+};
 
 void lcd_signal_sniffer_init(void)
 {
@@ -81,18 +85,29 @@ void lcd_signal_sniffer_init(void)
 void timer_func(void* args)
 {
 
+    int16_t i, n;
+    char line[20];
+    sta_t sta;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta_list_len(&n));
+
+    for(i = 0; i < n; ++i)
+    {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta(i, &sta));
+        snprintf(line, 20, MACSTR, MAC2STR(sta.mac));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer(2*i, line));
+        snprintf(line, 20, "RSSI = %03d", sta.rssi);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(ui_push_to_line_buffer((2*i) +1, line));
+    }
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
 }
 
 void lcd_signal_sniffer_cb(uint8_t index)
 {
-    int8_t n;
+    int16_t n;
     ap_t ap;
     sta_t sta;
     esp_err_t e;
-    wifi_promiscuous_filter_t filt = 
-    {
-        .filter_mask=WIFI_PROMIS_FILTER_MASK_DATA | WIFI_PROMIS_FILTER_MASK_MGMT
-    };
 
     if(gp_timer_running)
     {
@@ -104,11 +119,12 @@ void lcd_signal_sniffer_cb(uint8_t index)
     ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta_list_len(&n));
     if(index >= n)
     {
-        ESP_LOGE(TAG, "tried to access AP beyond list len");
         ESP_ERROR_CHECK_WITHOUT_ABORT(ui_home_screen_pos());
         ESP_ERROR_CHECK_WITHOUT_ABORT(ui_update_display());
         return;
     }
+
+    target_ap = index;
 
     e = ESP_OK;
     e |= ui_lock_cursor();
@@ -118,13 +134,14 @@ void lcd_signal_sniffer_cb(uint8_t index)
     e |= ui_push_to_line_buffer(2, "");
     e |= ui_push_to_line_buffer(3, "");
     e |= ui_update_display();
+    e |= mac_logger_get_ap(index, &sta, &ap);
     e |= mac_logger_clear();
     e |= pkt_sniffer_clear_filter_list();
-    e |= mac_logger_get_ap(index, &sta, &ap);
     e |= mac_logger_init(sta.mac);
     e |= pkt_sniffer_launch(ap.channel, filt);
     e |= esp_timer_create(&gp_timer_args, &gp_timer);
     e |= esp_timer_start_periodic(gp_timer, TIMER_DELAY_MS*1000);
+    e |= ui_unlock_cursor();
     gp_timer_running = 1;
     ESP_ERROR_CHECK_WITHOUT_ABORT(e);
 
@@ -140,6 +157,7 @@ void lcd_signal_sniffer_fini(void)
         gp_timer_running = 0;    
     }
 
+    target_ap = -1;
     e |= pkt_sniffer_kill();
     e |= mac_logger_clear();
     e |= pkt_sniffer_clear_filter_list();
