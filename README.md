@@ -2,7 +2,7 @@
 
 Welcome to the ESP 32 Deluminator project. The name is a reference to Dumbledor's light snatching deluminator from the harry potter series. We have 3 very specific goals in mind as it relates to this project.
 
-* (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs.
+* (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs and other packet logging / sniffing based activites.
 * (2) Explore the wifi 802.11 protocol and internal workings of this medium
 * (3) Explore the HW and programming model of the ESP32
 
@@ -16,6 +16,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 * Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
     * This page also describes how to set up JTAG debugging with a Raspberry Pi 4 model B. This is recommended if one does any ESP 32 development as it gives one intruction level stepping with a 45 dollar Raspberri PI.
+* The block diagram below gives a good high level overview of the software components of this system:
 
 ```    
 |-------------------|                   |--------------------|
@@ -31,26 +32,20 @@ We do not support or condone the use of any attacks on non consenting parties. P
 |---------------------------------|
 ```
 
+* Every module contains "self-contained" documentation. main.c is a good place to start to get a high level overview. Effort was made to make the components self contained and to provide both theory and implementation (what and why and how).
+* The basic model is that of event driven services. Main inits all the important esp API systems. We then register our code as services that listen for certtain events on the system and act accordingly.
+
 ## TODO
-* Main needs some more doc
-    * Wifi
-    * High level systems overview
 * Finish the table below
     * DOC
-    * MEM ANAL
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
 * Recreate the LCD Apps in their own file
     * WPA2 Key Collecter
         * Targeted    - Send one to a specific
         * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
-    * Deauth DoS attack
-        * Targeted  - Target single known STA
-        * Agro 1    - For every pkt sniffed respond with a deauth
-        * Agro Inf  - Send broadcast deauths at mach jesus
-* Push attacks doc to headers
+* Push attacks doc to component headers
 * Deauthg repl
-* update display events could also be event based
 * REPL clear FS
 
 ### v0.2
@@ -60,6 +55,8 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * The way we save eapol keys and the way the way the tcp server work is jank
 * EAPOL logger may have issues if multiple come in or only partial come in
 * Make AP hidden
+* Memory and Perfomance Analysis
+* Pipe repl traffic over the AP?
 
 
 ## Coding Standards
@@ -83,8 +80,8 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | encoder         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | HD44780         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
+| tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |     |  X  |     |  X  |  X  |     |
 

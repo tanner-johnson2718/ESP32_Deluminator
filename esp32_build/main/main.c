@@ -1,4 +1,31 @@
-// High level system overview...
+// This is the starting point for the esp32 deluminator. The main module here
+// inits all the important subsystems. These are)
+//
+//    * Flash memory w/ spiffs file system to store files
+//    * Flash memory w/ NVS storage for the wifi system
+//    * REPL serial interface for debugging
+//    * Wifi in AP/STA mode so as to have an access point and station
+//
+// Next main registers all of our "services" or components to act on system
+// events. These fall into 2 general categories repl commands or ui commands.
+// The repl commands allow one to the system via the serial command line and
+// the ui commands via the lcd screen and rotary encoder. The system is
+// composed of the following high level modules:
+//
+//    * UI - This gives a model for lcd apps to control the LCD and act on 
+//           input events
+//    * PKT Sniffer - Adds a layer extra filtering on top of the existing 
+//                    promiscious wifi mode. Allows us to multiplex packets
+//                    and have serveral services processing pkts they are
+//                    intersted in.
+//    * MAC Logger - Sits on top of PKT Sniffer and logs all STAs, APs, and
+//                   their association.
+//    * EAPOL Logger - Listens for WPA2 handshakes and dumps them to disk
+//    * WSL Bypasser - Got from homie online (see component for details). 
+//                     Allows us to send deauth pkts posing as a differnt AP
+//    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
+//                        to requestors over the AP.
+//
 
 #include <stdio.h>
 #include <dirent.h>
@@ -95,7 +122,8 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 
 
 //*****************************************************************************
-// Wifi ... todo doc
+// We configure the wifi such that it can both be a host and a client. Be sure
+// that you do not run pkt sniffer with a client connected or it will fail.
 //*****************************************************************************
 #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
 #define EXAMPLE_ESP_WIFI_CHANNEL 1
@@ -289,14 +317,6 @@ void init_wifi(void)
     ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
     ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
                 mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-    // active_mac_list_lock = xSemaphoreCreateBinary();
-    // eapol_lock = xSemaphoreCreateBinary();
-
-    // assert(xSemaphoreGive(active_mac_list_lock) == pdTRUE);
-    // assert(xSemaphoreGive(eapol_lock) == pdTRUE);
-
-    // ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Scan AP", ui_scan_ap_ini, ui_scan_ap_cb, ui_scan_ap_fini));
-    // ESP_ERROR_CHECK_WITHOUT_ABORT(ui_add_cmd("Deauth Attack", ui_scan_mac_ini, ui_scan_mac_cb, ui_scan_mac_fini));
 }
 
 //*****************************************************************************
