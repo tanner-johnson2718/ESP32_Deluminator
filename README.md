@@ -27,16 +27,18 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * Documentation found in header files of components
  
 ## TODO
+* pkt sniffer and loggers, queue based
+* EAPOL logger may have issues if multiple come in or only partial come in
+* The way we save eapol keys and the way the way the tcp server work is jank
 * Finish the table below
     * DOC
+    * mem
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
 * Push attacks doc to component headers
 * IP Logger
 * Check if a network has PMF
 * power analysis
-* The way we save eapol keys and the way the way the tcp server work is jank
-* EAPOL logger may have issues if multiple come in or only partial come in
 * Make AP hidden
 * Memory and Perfomance Analysis
 * Pipe repl traffic over the AP?
@@ -63,7 +65,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |     |  X  |     |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 
 
 ## JTAG and running GDB
