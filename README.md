@@ -2,7 +2,7 @@
 
 Welcome to the ESP 32 Deluminator project. The name is a reference to Dumbledor's light snatching deluminator from the harry potter series. We have 3 very specific goals in mind as it relates to this project.
 
-* (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs and other packet logging / sniffing based activites.
+* (1) Create an esp32 device that can carry out various wifi based attacks on our home network. Specifically one that specializes in collecting encrypted WPA2 PSKs and other packet logging / sniffing based attacks.
 * (2) Explore the wifi 802.11 protocol and internal workings of this medium
 * (3) Explore the HW and programming model of the ESP32
 
@@ -14,14 +14,17 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 # Usage
 
-.....
+* Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up).
 
 # Software and the ESP32 System
 
-* Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
-    * This page also describes how to set up JTAG debugging with a Raspberry Pi 4 model B. This is recommended if one does any ESP 32 development as it gives one intruction level stepping with a 45 dollar Raspberri PI.
-* Every module contains "self-contained" documentation. main.c is a good place to start to get a high level overview. Effort was made to make the components self contained and to provide both theory and implementation (what and why and how).
-* The basic model is that of event driven services. Main inits all the important esp API systems. We then register our code as services that can be started and stopped dynamically and these services implement the base functionallity of the device.
+* Event Driven
+* Highly modularized
+* Event Queue is the base data structure
+* etc
+* etc
+* New Block DiagramWiring and 
+* Documentation found in header files of components
  
 ## TODO
 * Finish the table below
@@ -63,6 +66,10 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | wsl_bypasser    |  X  |  X  |     |  X  |     |  X  |  X  |     |
 
 
+## JTAG and running GDB
+
+# 3D printed Case for v0.2+ (NO UI)
+
 
 # Wiring and 3D Printed Case for v0.1 LCD version
 
@@ -79,6 +86,8 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 | 32 | Rot A Term | - |
 | 27 | Rot B Term | - |
 | GND | Rot Middle term | - |
+
+## BOM
 
 * [ESP32 Wroom Dev Kit](https://www.amazon.com/gp/product/B08246MCL5/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1)
 * [LCD 2004 w/ i2c backpack](https://www.amazon.com/dp/B0C1G9GBRZ?psc=1&ref=ppx_yo2ov_dt_b_product_details)
