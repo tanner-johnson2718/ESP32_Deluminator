@@ -34,7 +34,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 * Every module contains "self-contained" documentation. main.c is a good place to start to get a high level overview. Effort was made to make the components self contained and to provide both theory and implementation (what and why and how).
 * The basic model is that of event driven services. Main inits all the important esp API systems. We then register our code as services that listen for certtain events on the system and act accordingly.
-
+ 
 ## TODO
 * Finish the table below
     * DOC
@@ -45,8 +45,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
         * Targeted    - Send one to a specific
         * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
 * Push attacks doc to component headers
-* Deauthg repl
-* REPL clear FS
+* Deauthg rep
 
 ### v0.2
 * IP Logger

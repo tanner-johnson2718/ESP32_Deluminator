@@ -41,12 +41,14 @@
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
 #include "heap_memory_layout.h"
+#include "esp_mac.h"
 
 #include "user_interface.h"
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
 #include "mac_logger.h"
 #include "eapol_logger.h"
+#include "wsl_bypasser.h"
 
 static const char* TAG = "MAIN";
 
@@ -113,11 +115,19 @@ static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);
 static int do_ls(int, char**);
 static int do_df(int, char**);
+static int do_rm(int argc, char** argv);
+
 static int do_part_table(int, char**);
 static int do_dump_soc_regions(int, char**);
 static int do_free(int, char**);
 static int do_restart(int, char**);
 static int do_tasks(int, char**);
+
+static int do_send_deauth(int, char**);
+static int do_eapol_logger_init(int argc, char** argv);
+static int do_mac_logger_init(int argc, char** argv);
+static int do_mac_logger_dump(int argc, char** argv);
+
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 
 
@@ -155,7 +165,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
-    ui_init();
+    // ui_init();
     init_wifi();
 
     // ESP IDF REPL Func Registration
@@ -172,32 +182,33 @@ void app_main(void)
     register_no_arg_cmd("tasks", "Print List of Tasks", &do_tasks);
     register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
     register_no_arg_cmd("restart", "SW Restart", &do_restart);
+    register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
 
     // UI test driver repl functions
-    register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
-    register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
-    register_no_arg_cmd("press", "Simulate short press", &do_press);
-    register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
+    //register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
+    //register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
+    //register_no_arg_cmd("press", "Simulate short press", &do_press);
+    // register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
     register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
     register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
-    register_no_arg_cmd("mac_logger_start_dump", "Start Mac dump", &do_mac_logger_start_dump);
-    register_no_arg_cmd("mac_logger_stop_dump", "Stop Mac dump", &do_mac_logger_stop_dump);
+    register_no_arg_cmd("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
     register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init module", &do_mac_logger_init);
     register_no_arg_cmd("eapol_logger_init", "Register the eapol logger with the pkt sniffer", &do_eapol_logger_init);
+    register_no_arg_cmd("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
 
     // TCP File Server test driver repl functions
     register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
     register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
     // register our ui apps
-    ESP_ERROR_CHECK(ui_add_cmd("FS EXP" , lcd_fsexp_init, lcd_fsexp_cb, lcd_fsexp_fini));
-    ESP_ERROR_CHECK(ui_add_cmd("FS Wipe", lcd_wipefs_init, lcd_wipefs_cb, lcd_wipefs_fini));
-    ESP_ERROR_CHECK(ui_add_cmd("Singal Hound v6.9", lcd_signal_sniffer_init, lcd_signal_sniffer_cb, lcd_signal_sniffer_fini));
-    ESP_ERROR_CHECK(ui_add_cmd("WPA2 Pasive", lcd_wpa2_passive_pwn_init, lcd_wpa2_passive_pwn_cb, lcd_wpa2_passive_pwn_fini));
+    // ESP_ERROR_CHECK(ui_add_cmd("FS EXP" , lcd_fsexp_init, lcd_fsexp_cb, lcd_fsexp_fini));
+    // ESP_ERROR_CHECK(ui_add_cmd("FS Wipe", lcd_wipefs_init, lcd_wipefs_cb, lcd_wipefs_fini));
+    // ESP_ERROR_CHECK(ui_add_cmd("Singal Hound v6.9", lcd_signal_sniffer_init, lcd_signal_sniffer_cb, lcd_signal_sniffer_fini));
+    // ESP_ERROR_CHECK(ui_add_cmd("WPA2 Pasive", lcd_wpa2_passive_pwn_init, lcd_wpa2_passive_pwn_cb, lcd_wpa2_passive_pwn_fini));
 
     // Start the REPL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -320,7 +331,7 @@ void init_wifi(void)
 }
 
 //*****************************************************************************
-// Misc REPL Command
+// REPL Command Helpers
 //*****************************************************************************
 
 static struct 
@@ -341,6 +352,87 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 
 }
+
+//*****************************************************************************
+// REPL Logger funcs
+//*****************************************************************************
+
+static int do_send_deauth(int argc, char** argv)
+{
+    if(argc != 3)
+    {
+        printf("Usage) send_deauth <ap_mac> <sta_mac>");
+        return 1;
+    }
+
+    uint8_t ap_mac[6];
+    uint8_t sta_mac[6];
+
+    if(sscanf(argv[1], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", MAC2STR(&ap_mac)) != 6)
+    {
+        printf("Error parsing ap_mac = %s\n", argv[1]);
+        return 1;
+    }
+
+    if(sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", MAC2STR(&sta_mac)) != 6)
+    {
+        printf("Error parsing sta_mac = %s\n", argv[2]);
+        return 1;
+    }
+
+    printf("Deauthing %s from %s\n", argv[2], argv[1]);
+    ESP_ERROR_CHECK(wsl_bypasser_send_deauth_frame_targted(ap_mac, sta_mac));
+
+    return 0;
+}
+
+static void dump(void* args)
+{
+    int16_t n, i;
+    int8_t n_ap;
+    ap_t ap;
+    sta_t sta;    
+    ESP_ERROR_CHECK(mac_logger_get_sta_list_len(&n));
+    
+    printf("STA LIST: \n");
+    for(i = 0; i < n; ++i)
+    {
+        ESP_ERROR_CHECK(mac_logger_get_sta(i, &sta));
+        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
+    }
+    printf("%d stas\n\n", n);
+
+    ESP_ERROR_CHECK(mac_logger_get_ap_list_len(&n_ap));
+    printf("AP LIST: \n");
+    for(i = 0; i < n_ap; ++i)
+    {
+        ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
+        printf("%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
+    }
+    printf("%d aps\n\n", n_ap);
+}
+
+static int do_mac_logger_init(int argc, char** argv)
+{
+    mac_logger_init(NULL);
+    return 0;
+}
+
+static int do_mac_logger_dump(int argc, char** argv)
+{
+    dump(NULL);
+    return 0;
+}
+
+static int do_eapol_logger_init(int argc, char** argv)
+{
+    ESP_ERROR_CHECK(eapol_logger_init(NULL));
+    return 0;
+}
+
+//*****************************************************************************
+// FS repl funcs
+//*****************************************************************************
 
 static int do_part_table(int argc, char** argv)
 {
@@ -415,6 +507,27 @@ static int do_cat(int argc, char **argv)
     return 0;
 }
 
+static int do_rm(int argc, char** argv)
+{
+    DIR *d;
+    struct dirent *dir;
+    char path[33];
+
+    d = opendir(MOUNT_PATH);
+    if(d)
+    {
+        while((dir = readdir(d))!=NULL)
+        {
+            snprintf(path, 33, "%s/%.22s", MOUNT_PATH, dir->d_name);
+            printf("Removing %s\n",path);
+            remove(path);
+        }
+        closedir(d);
+    }
+
+    return 0;
+}
+
 static int do_dump_event_log(int argc, char** argv)
 {
     if(argc != 2)
@@ -431,6 +544,10 @@ static int do_dump_event_log(int argc, char** argv)
     fclose(f);
     return 0;
 }
+
+//*****************************************************************************
+// Random system repl func
+//*****************************************************************************
 
 static int do_dump_soc_regions(int argc, char **argv)
 {

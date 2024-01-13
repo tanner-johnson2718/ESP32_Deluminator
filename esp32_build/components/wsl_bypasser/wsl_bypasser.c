@@ -16,6 +16,7 @@
 #include "esp_err.h"
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#include "esp_mac.h"
 
 static const char *TAG = "wsl_bypasser";
 /**

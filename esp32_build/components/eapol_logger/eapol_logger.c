@@ -305,13 +305,3 @@ esp_err_t eapol_logger_init(uint8_t* ap_mac)
     ESP_LOGI(TAG, "filter added");
     return e;
 }
-
-//*****************************************************************************
-// REPL Test interface
-//*****************************************************************************
-
-int do_eapol_logger_init(int argc, char** argv)
-{
-    ESP_ERROR_CHECK(eapol_logger_init(NULL));
-    return 0;
-}

@@ -135,10 +135,3 @@ esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap);
 //         INVALID_STATE - couldn't get lock
 //*****************************************************************************
 esp_err_t mac_logger_clear(void);
-
-//*****************************************************************************
-// REPL Test functions
-//*****************************************************************************
-int do_mac_logger_start_dump(int argc, char** argv);
-int do_mac_logger_stop_dump(int argc, char** argv);
-int do_mac_logger_init(int argc, char** argv);

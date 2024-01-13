@@ -123,6 +123,7 @@ static inline void insert(uint8_t* m1, int8_t rssi, uint8_t* ap_mac)
         if(mac_is_eq(m1, get_nth_mac(i)))
         {
             set_nth_rssi(i, rssi);
+            set_nth_ap_assoc_index(i, ap_mac);
             _release_lock();
             return;
         }
@@ -337,62 +338,4 @@ esp_err_t mac_logger_clear(void)
     _release_lock();
     return ESP_OK;
 }
-
-//*****************************************************************************
-// REPL Test Driver Functions
-//*****************************************************************************
-
-void dump(void* args)
-{
-    int16_t n, i;
-    int8_t n_ap;
-    ap_t ap;
-    sta_t sta;    
-    ESP_ERROR_CHECK(mac_logger_get_sta_list_len(&n));
-    
-    printf("STA LIST: \n");
-    for(i = 0; i < n; ++i)
-    {
-        ESP_ERROR_CHECK(mac_logger_get_sta(i, &sta));
-        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
-    }
-    printf("%d stas\n\n", n);
-
-    ESP_ERROR_CHECK(mac_logger_get_ap_list_len(&n_ap));
-    printf("AP LIST: \n");
-    for(i = 0; i < n_ap; ++i)
-    {
-        ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
-        printf("%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
-    }
-    printf("%d aps\n\n", n_ap);
-}
-
-static esp_timer_handle_t dump_timer;
-static esp_timer_create_args_t dump_timer_args = 
-{
-    .callback = dump,
-    .name = "Wifi GP Timer"
-};
-
-int do_mac_logger_init(int argc, char** argv)
-{
-    mac_logger_init(NULL);
-    return 0;
-}
-
-int do_mac_logger_start_dump(int argc, char** argv)
-{
-    ESP_ERROR_CHECK(esp_timer_create(&dump_timer_args, &dump_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(dump_timer, 3000000));
-    return 0;
-}
-
-int do_mac_logger_stop_dump(int argc, char** argv)
-{
-    ESP_ERROR_CHECK(esp_timer_stop(dump_timer));
-    ESP_ERROR_CHECK(esp_timer_delete(dump_timer));
-    
-    return 0;
-}   
 
