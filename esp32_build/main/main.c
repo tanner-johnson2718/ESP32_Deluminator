@@ -184,7 +184,7 @@ void app_main(void)
     register_no_arg_cmd("restart", "SW Restart", &do_restart);
     register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
 
-    // UI test driver repl functions
+    // UI test driver repl functions 
     //register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
     //register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
     //register_no_arg_cmd("press", "Simulate short press", &do_press);
