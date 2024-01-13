@@ -45,6 +45,7 @@
 #include "mac_logger.h"
 #include "eapol_logger.h"
 #include "wsl_bypasser.h"
+#include "repl_mux.h"
 
 static const char* TAG = "MAIN";
 
@@ -92,7 +93,7 @@ static void initialize_nvs(void);
 //*****************************************************************************
 // One of the main components of the ESP32 Deluminator is a thin wrapper for 
 // the esp idf console library. This provides a REPL over the USB serial 
-// console which cna be accesed by running idf.py -p /dev/ttyUSB0 monitor. 
+// console which can be accesed by running idf.py -p /dev/ttyUSB0 monitor. 
 // 
 // We use the base API but do not use its arg parsing frame work and we impose
 // arg parsing on the writer of the repl func. To register a REPL function use
@@ -100,7 +101,7 @@ static void initialize_nvs(void);
 //                    int f(int argc, char** argv) 
 // 
 // The below functions interface with the API of our components and gives us
-// a means of intercating with our system.
+// a means of intercating with our system through this serial repl.
 //*****************************************************************************
 static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);
@@ -113,6 +114,7 @@ static int do_dump_soc_regions(int, char**);
 static int do_free(int, char**);
 static int do_restart(int, char**);
 static int do_tasks(int, char**);
+static int do_get_task(int argc, char** argv);
 
 static int do_send_deauth(int, char**);
 static int do_eapol_logger_init(int argc, char** argv);
@@ -139,6 +141,7 @@ static void init_wifi(void);
 void app_main(void)
 {
     // Dont mix up this order ... it matters
+    ESP_ERROR_CHECK(repl_mux_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
@@ -159,6 +162,7 @@ void app_main(void)
     register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
     register_no_arg_cmd("restart", "SW Restart", &do_restart);
     register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
+    register_no_arg_cmd("get_task", "Print name of current task", &do_get_task);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
@@ -638,6 +642,13 @@ static int do_dump_event_log(int argc, char** argv)
 //*****************************************************************************
 // Random system repl func
 //*****************************************************************************
+
+static int do_get_task(int argc, char** argv)
+{
+    char* name = pcTaskGetName(xTaskGetCurrentTaskHandle());
+    printf("Current Task = %s\n", name);
+    return 0;
+}
 
 static int do_dump_soc_regions(int argc, char **argv)
 {

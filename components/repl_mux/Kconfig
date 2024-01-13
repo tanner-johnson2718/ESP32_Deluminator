@@ -1,0 +1,27 @@
+menu "REPL MUX Config"
+
+    config REPL_MUX_N_QUEUES
+        int "Number of mux queues"
+        default 2
+    
+    config REPL_MUX_MAX_LOG_MSG
+        int "Max size of a log message"
+        default 128
+
+    config REPL_MUX_Q_SIZE
+        int "Number of messages allowed on the each Q at a given time"
+        default 8
+
+    config REPL_MUX_STACK_SIZE
+        int "Consumer Task stack size"
+        default 4096
+
+    config REPL_MUX_CONSUMER_PRIO
+        int "Consumer Task Priority"
+        default 2
+
+    config REPL_MUX_WAIT_MS
+        int "Time in ms to wait for queue to clear up to publish more logs"
+        default 10
+        
+endmenu
