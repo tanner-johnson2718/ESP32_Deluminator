@@ -46,8 +46,6 @@ We do not support or condone the use of any attacks on non consenting parties. P
         * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
 * Push attacks doc to component headers
 * Deauthg rep
-
-### v0.2
 * IP Logger
 * Check if a network has PMF
 * power analysis

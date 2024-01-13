@@ -3,7 +3,7 @@
 //
 //    * Flash memory w/ spiffs file system to store files
 //    * Flash memory w/ NVS storage for the wifi system
-//    * REPL serial interface for debugging
+//    * REPL serial interface for driving system
 //    * Wifi in AP/STA mode so as to have an access point and station
 //
 // Next main registers all of our "services" or components to act on system
@@ -12,8 +12,6 @@
 // the ui commands via the lcd screen and rotary encoder. The system is
 // composed of the following high level modules:
 //
-//    * UI - This gives a model for lcd apps to control the LCD and act on 
-//           input events
 //    * PKT Sniffer - Adds a layer extra filtering on top of the existing 
 //                    promiscious wifi mode. Allows us to multiplex packets
 //                    and have serveral services processing pkts they are
@@ -43,7 +41,6 @@
 #include "heap_memory_layout.h"
 #include "esp_mac.h"
 
-#include "user_interface.h"
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
 #include "mac_logger.h"
@@ -165,7 +162,6 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
-    // ui_init();
     init_wifi();
 
     // ESP IDF REPL Func Registration
@@ -184,12 +180,6 @@ void app_main(void)
     register_no_arg_cmd("restart", "SW Restart", &do_restart);
     register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
 
-    // UI test driver repl functions 
-    //register_no_arg_cmd("rotL", "Simulate rotating rotary left", &do_rot_l);
-    //register_no_arg_cmd("rotR", "Simulate rotating rotary right", &do_rot_r);
-    //register_no_arg_cmd("press", "Simulate short press", &do_press);
-    // register_no_arg_cmd("pressss", "Simulate long press", &do_long_press);
-
     // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
     register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
@@ -203,12 +193,6 @@ void app_main(void)
     // TCP File Server test driver repl functions
     register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
     register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
-
-    // register our ui apps
-    // ESP_ERROR_CHECK(ui_add_cmd("FS EXP" , lcd_fsexp_init, lcd_fsexp_cb, lcd_fsexp_fini));
-    // ESP_ERROR_CHECK(ui_add_cmd("FS Wipe", lcd_wipefs_init, lcd_wipefs_cb, lcd_wipefs_fini));
-    // ESP_ERROR_CHECK(ui_add_cmd("Singal Hound v6.9", lcd_signal_sniffer_init, lcd_signal_sniffer_cb, lcd_signal_sniffer_fini));
-    // ESP_ERROR_CHECK(ui_add_cmd("WPA2 Pasive", lcd_wpa2_passive_pwn_init, lcd_wpa2_passive_pwn_cb, lcd_wpa2_passive_pwn_fini));
 
     // Start the REPL
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -368,19 +352,19 @@ static int do_send_deauth(int argc, char** argv)
     uint8_t ap_mac[6];
     uint8_t sta_mac[6];
 
-    if(sscanf(argv[1], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", MAC2STR(&ap_mac)) != 6)
+    if(sscanf(argv[1], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", ap_mac, ap_mac+1, ap_mac+2, ap_mac+3, ap_mac+4, ap_mac+5) != 6)
     {
         printf("Error parsing ap_mac = %s\n", argv[1]);
         return 1;
     }
 
-    if(sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", MAC2STR(&sta_mac)) != 6)
+    if(sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", sta_mac, sta_mac+1,sta_mac+2, sta_mac+3, sta_mac+4,sta_mac+5) != 6)
     {
         printf("Error parsing sta_mac = %s\n", argv[2]);
         return 1;
     }
 
-    printf("Deauthing %s from %s\n", argv[2], argv[1]);
+    printf("Deauthing "MACSTR" from "MACSTR"\n", MAC2STR(sta_mac), MAC2STR(ap_mac));
     ESP_ERROR_CHECK(wsl_bypasser_send_deauth_frame_targted(ap_mac, sta_mac));
 
     return 0;
