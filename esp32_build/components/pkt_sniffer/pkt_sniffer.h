@@ -95,12 +95,3 @@ esp_err_t pkt_sniffer_launch(uint8_t channel, wifi_promiscuous_filter_t type_fil
 // Return) ESP OK if killed. 
 //*****************************************************************************
 esp_err_t pkt_sniffer_kill(void);
-
-//*****************************************************************************
-// REPL Test Driver Functions
-//*****************************************************************************
-
-int do_pkt_sniffer_add_filter(int argc, char** argv);
-int do_pkt_sniffer_launch(int argc, char** argv);
-int do_pkt_sniffer_kill(int argc, char** argv);
-int do_pkt_sniffer_clear(int argc, char** argv);

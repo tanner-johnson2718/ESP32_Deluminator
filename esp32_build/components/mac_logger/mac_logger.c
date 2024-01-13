@@ -99,7 +99,11 @@ static inline void set_nth_ap_assoc_index(int16_t n, uint8_t* ap_mac)
         if(mac_is_eq(ap_mac,test_mac))
         {
             _ap_assoc_index = i;
-            ap_list[i].num_assoc_stas++;
+            if(sta_list[n].ap_assoc_index == -1 && sta_list[n].ap_list_index == -1)
+            {
+                ap_list[i].num_assoc_stas++;
+            }
+
             break;
         }
     }
@@ -133,7 +137,7 @@ static inline void insert(uint8_t* m1, int8_t rssi, uint8_t* ap_mac)
     set_nth_mac(sta_list_len-1, m1);    
     set_nth_rssi(sta_list_len-1, rssi);
     set_nth_ap_index(sta_list_len-1, -1);
-    set_nth_ap_assoc_index(sta_list_len -1, ap_mac);
+    sta_list[sta_list_len-1].ap_assoc_index = -1;
     _release_lock();
 }
 

@@ -12,40 +12,23 @@ Welcome to the ESP 32 Deluminator project. The name is a reference to Dumbledor'
 
 We do not support or condone the use of any attacks on non consenting parties. Please only do this on your own hardware or on systems that you have been given rights to attack.
 
+# Usage
+
+.....
+
 # Software and the ESP32 System
 
 * Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up)
     * This page also describes how to set up JTAG debugging with a Raspberry Pi 4 model B. This is recommended if one does any ESP 32 development as it gives one intruction level stepping with a 45 dollar Raspberri PI.
-* The block diagram below gives a good high level overview of the software components of this system:
-
-```    
-|-------------------|                   |--------------------|
-|         UI        |                   | EAPOL | MAC Logger | 
-|-------------------|    |-----------|  |--------------------|  |------------|
-| Rotary Enc. | LCD |    | File Serv |  |      PKT Sniff     |  | WSL ByPass |
-|-------------------|    |-----------|  |--------------------|  |------------|
-
-|---------------------------------|   |---------------------------------------|
-|              Main               |   |      LCD Attack / Util UI Apps        |
-|---------------------------------|   |---------------------------------------|
-| NVS | SPIFFS | REPL | STA | AP  |
-|---------------------------------|
-```
-
 * Every module contains "self-contained" documentation. main.c is a good place to start to get a high level overview. Effort was made to make the components self contained and to provide both theory and implementation (what and why and how).
-* The basic model is that of event driven services. Main inits all the important esp API systems. We then register our code as services that listen for certtain events on the system and act accordingly.
+* The basic model is that of event driven services. Main inits all the important esp API systems. We then register our code as services that can be started and stopped dynamically and these services implement the base functionallity of the device.
  
 ## TODO
 * Finish the table below
     * DOC
 * look into exactly what is happining when we crack
     * maybe make a python script for that 
-* Recreate the LCD Apps in their own file
-    * WPA2 Key Collecter
-        * Targeted    - Send one to a specific
-        * Aggresive   - For every ssid w/ stations send deauths on a timer till you get it
 * Push attacks doc to component headers
-* Deauthg rep
 * IP Logger
 * Check if a network has PMF
 * power analysis
@@ -74,15 +57,16 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- | --- |
 | eapol logger    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| encoder         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
-| HD44780         |  X  |  X  |  X  |  X  | N/A |  X  |  X  |     |
 | mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| user_interface  |  X  |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |     |  X  |     |  X  |  X  |     |
 
-# Wiring and 3D Printed Case
+
+
+# Wiring and 3D Printed Case for v0.1 LCD version
+
+Our initial prototypa had an lcd and rotary encoder. The code for this is archived at tag v0.1, but we found that 1 it was bulky and 2 it was easier to run the system from the repl. 
 
 | ESP Pin | LCD / ROT Pin | Func |
 | --- | --- | --- |

@@ -7,10 +7,9 @@
 //    * Wifi in AP/STA mode so as to have an access point and station
 //
 // Next main registers all of our "services" or components to act on system
-// events. These fall into 2 general categories repl commands or ui commands.
-// The repl commands allow one to the system via the serial command line and
-// the ui commands via the lcd screen and rotary encoder. The system is
-// composed of the following high level modules:
+// events. These are the repl commands that allow one to drive the system via 
+// the serial command line. The system is composed of the following high level
+// modules:
 //
 //    * PKT Sniffer - Adds a layer extra filtering on top of the existing 
 //                    promiscious wifi mode. Allows us to multiplex packets
@@ -100,13 +99,8 @@ static void initialize_nvs(void);
 // register_no_arg_cmd(...) on a function with the signature:
 //                    int f(int argc, char** argv) 
 // 
-// Moreover this component gives us logging via ESP_LOGI/E/W/etc. over the
-// usb serial console. menuconfig and the logging API give means to adjust the
-// outpul level globaly and specific to a module.
-//
-// We mainly use this REPL interface as a means of exporting test drivers that
-// can be driven over the serial console and dumps its output over the serial
-// console
+// The below functions interface with the API of our components and gives us
+// a means of intercating with our system.
 //*****************************************************************************
 static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);
@@ -124,9 +118,12 @@ static int do_send_deauth(int, char**);
 static int do_eapol_logger_init(int argc, char** argv);
 static int do_mac_logger_init(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
+static int do_pkt_sniffer_add_filter(int argc, char** argv);
+static int do_pkt_sniffer_launch(int argc, char** argv);
+static int do_pkt_sniffer_kill(int argc, char** argv);
+static int do_pkt_sniffer_clear(int argc, char** argv);
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
-
 
 //*****************************************************************************
 // We configure the wifi such that it can both be a host and a client. Be sure
@@ -138,23 +135,6 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 #define EXAMPLE_MAX_STA_CONN 1
 
 static void init_wifi(void);
-
-//*****************************************************************************
-// External LCD Apps. We gave each app its own C file in the main dir and just
-// register them ui system here
-//*****************************************************************************`
-extern void lcd_fsexp_init(void);
-extern void lcd_fsexp_cb(uint8_t index);
-extern void lcd_fsexp_fini(void);
-extern void lcd_wipefs_init(void);
-extern void lcd_wipefs_cb(uint8_t index);
-extern void lcd_wipefs_fini(void);
-extern void lcd_signal_sniffer_init(void);
-extern void lcd_signal_sniffer_cb(uint8_t index);
-extern void lcd_signal_sniffer_fini(void);
-extern void lcd_wpa2_passive_pwn_init(void);
-extern void lcd_wpa2_passive_pwn_cb(uint8_t index);
-extern void lcd_wpa2_passive_pwn_fini(void);
 
 void app_main(void)
 {
@@ -412,6 +392,132 @@ static int do_eapol_logger_init(int argc, char** argv)
 {
     ESP_ERROR_CHECK(eapol_logger_init(NULL));
     return 0;
+}
+
+static inline uint8_t get_subtype(uint8_t* pkt)
+{
+    return (pkt[0] >> 4) & 0x0F;
+}
+
+static void _cb(wifi_promiscuous_pkt_t* p, 
+                wifi_promiscuous_pkt_type_t type)
+{
+
+    printf("TYPE=");
+    switch(type)
+    {
+        case WIFI_PKT_MGMT:
+            printf("Man ");
+            break;
+        case WIFI_PKT_CTRL:
+            printf("Ctl ");
+            break;
+        case WIFI_PKT_DATA:
+            printf("Dat ");
+            break;
+        case WIFI_PKT_MISC:
+            printf("Mis ");
+            break;
+        default:
+            break;
+    }
+
+    printf("STYPE=%d ", get_subtype(p->payload));
+
+    uint8_t* dst = p->payload + 4;
+    uint8_t* src = p->payload + 10;
+    uint8_t* ap =  p->payload + 16;
+
+    printf("DST="MACSTR" SRC="MACSTR" AP="MACSTR"\n", MAC2STR(dst),
+                                                      MAC2STR(src),
+                                                      MAC2STR(ap));
+
+}
+
+// 0 sucesses parse, 1 on sscanf fail
+static int sscanf_helper(uint8_t* mac, char* s)
+{
+    uint8_t ret = sscanf(s, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
+                        &mac[0],
+                        &mac[1],
+                        &mac[2],
+                        &mac[3],
+                        &mac[4],
+                        &mac[5]
+    );
+
+
+    if(ret != 6)
+    {
+        printf("Failed to parse AP MAC: %s\n", s);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int do_pkt_sniffer_add_filter(int argc, char** argv)
+{
+    if(argc != 4)
+    {
+        printf("Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL>");
+        return 1;
+    }
+
+    pkt_sniffer_filtered_cb_t filt_cb = {0};
+    if(strcmp(argv[1], "NULL") != 0)
+    {
+        filt_cb.ap_active = 1;
+        if(sscanf_helper(filt_cb.ap, argv[1])) {return 1;}
+    }
+
+    if(strcmp(argv[2], "NULL") != 0)
+    {
+        filt_cb.dst_active = 1;
+        if(sscanf_helper(filt_cb.dst, argv[2])) {return 1;}
+    }
+
+    if(strcmp(argv[3], "NULL") != 0)
+    {
+        filt_cb.src_active = 1;
+        if(sscanf_helper(filt_cb.src, argv[3])) {return 1;}
+    }
+
+    filt_cb.cb = _cb;
+    ESP_ERROR_CHECK(pkt_sniffer_add_filter(&filt_cb));
+
+    return 0;
+
+}
+
+static int do_pkt_sniffer_launch(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        printf("Usage: pkt_sniffer_launch <channel>");
+        return 1;
+    }
+
+    wifi_promiscuous_filter_t filt = 
+    {
+        .filter_mask=WIFI_PROMIS_FILTER_MASK_ALL
+    };
+
+    ESP_ERROR_CHECK(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10), filt));
+
+    return 0;
+}
+
+static int do_pkt_sniffer_kill(int argc, char** argv)
+{
+    ESP_ERROR_CHECK(pkt_sniffer_kill());
+    return 0;
+}
+
+static int do_pkt_sniffer_clear(int argc, char** argv)
+{
+    ESP_ERROR_CHECK(pkt_sniffer_clear_filter_list());
+    return 0 ;
 }
 
 //*****************************************************************************
