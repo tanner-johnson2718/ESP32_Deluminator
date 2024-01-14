@@ -15,6 +15,10 @@ We do not support or condone the use of any attacks on non consenting parties. P
 # Usage
 
 * Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up). This also describes flashing of the device.
+* The main interface for the system is the repl
+
+
+...........
 
 # Software and the ESP32 System
 
@@ -54,7 +58,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * (3) All components *should* have both implementation and theory doc in the header
 * (4) All component API functions **shall** have a summary describing their execution logic, a description of their input args with possible values, and all possible return values and their meaning
     * While checking this its good to verify that the API function has appriopiatly strict check on input args and is returning error codes that are actually descriptive.
-* (5) All components *should* export a REPL test interface and this is the only context in which printf is allowed
+* (5) All components *should* export a REPL  interface.
 * (6) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
 * (7) All components *should* use Kconfig params to set defines within their module
@@ -67,6 +71,8 @@ We do not support or condone the use of any attacks on non consenting parties. P
 | pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
+| repl_mux        |     |     |     |     |     |     |     |     |
+| main            |     |     |     |     |     |     |     |     |
 
 
 ## JTAG and running GDB

@@ -3,6 +3,7 @@
 
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_console.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -104,6 +105,7 @@ static void net_consumer_task_func(void* args)
     repl_mux_message_t msg;
     int listen_sock = -1;
     int client_socket = -1;
+    int recv_len;
 
     // This is considered early init task. If it fails blow everything up
     listen_sock = create_listening_socket();
@@ -121,22 +123,34 @@ static void net_consumer_task_func(void* args)
         queue_active[NET_Q] = 1;
         while(1)
         {
-            if(xQueueReceive(qs[NET_Q], &msg, portMAX_DELAY))
+            if(xQueueReceive(qs[NET_Q], &msg, 100 / portTICK_PERIOD_MS))
             {
-                if(send(client_socket, msg.log_msg, strlen(msg.log_msg), 0) < -1)
+                if(send(client_socket, msg.log_msg, strlen(msg.log_msg), 0) == 0)
                 {
                     ESP_LOGI(TAG, "client disonnected");
                     break;
                 }
             }
+
+            recv_len = recv(client_socket, &msg, CONFIG_REPL_MUX_MAX_LOG_MSG, MSG_DONTWAIT);
+            if(recv_len > 0)
+            {
+                msg.log_msg[recv_len-1] = 0;
+                ESP_LOGI(TAG, "recieved cmd over net: %s", msg.log_msg);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_console_run(msg.log_msg, &recv_len));
+            }
+            else if(recv_len == 0)
+            {
+                ESP_LOGI(TAG, "client disonnected");
+                break;
+            }
+
         }
-        
+
         shutdown(client_socket, 0);
         close(client_socket);
         queue_active[NET_Q] = 0;
     }
-
-    // Always alive
 }
 
 //*****************************************************************************

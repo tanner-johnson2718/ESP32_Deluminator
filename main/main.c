@@ -8,8 +8,8 @@
 //
 // Next main registers all of our "services" or components to act on system
 // events. These are the repl commands that allow one to drive the system via 
-// the serial command line. The system is composed of the following high level
-// modules:
+// the serial command line or over the supplied wifi AP. The system is composed 
+// of the following high level modules:
 //
 //    * PKT Sniffer - Adds a layer extra filtering on top of the existing 
 //                    promiscious wifi mode. Allows us to multiplex packets
@@ -22,7 +22,7 @@
 //                     Allows us to send deauth pkts posing as a differnt AP
 //    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
 //                        to requestors over the AP.
-//
+//    * REPL MUX - 
 
 #include <stdio.h>
 #include <dirent.h>
@@ -91,9 +91,20 @@ static void initialize_filesystem(void);
 static void initialize_nvs(void);
 
 //*****************************************************************************
-// One of the main components of the ESP32 Deluminator is a thin wrapper for 
+// One of the main components of the ESP32 Deluminator is a wrapper for 
 // the esp idf console library. This provides a REPL over the USB serial 
-// console which can be accesed by running idf.py -p /dev/ttyUSB0 monitor. 
+// console which can be accesed by running idf.py -p /dev/ttyUSB0 monitor.
+//
+// We also added a REPL MUX layer on top of the esp logging and esp console
+// modules. This allows us to 1) send logging data to multiple places and to
+// interact with the repl over the created wifi access point.
+//
+// **NOTE**
+//    - printf only sends traffic over UART
+//    - ESP_LOGE, etc adds debug level, tag and time stamp and will send 
+//      through the REPL MUX
+//    - use esp_log_write for generic log messages that go through the mux
+//      without adding all the extra stuff
 // 
 // We use the base API but do not use its arg parsing frame work and we impose
 // arg parsing on the writer of the repl func. To register a REPL function use
@@ -101,7 +112,7 @@ static void initialize_nvs(void);
 //                    int f(int argc, char** argv) 
 // 
 // The below functions interface with the API of our components and gives us
-// a means of intercating with our system through this serial repl.
+// a means of intercating with our system through the repl.
 //*****************************************************************************
 static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);
