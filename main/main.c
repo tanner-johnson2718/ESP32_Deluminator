@@ -22,7 +22,7 @@
 //                     Allows us to send deauth pkts posing as a differnt AP
 //    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
 //                        to requestors over the AP.
-//    * REPL MUX - 
+//    * REPL MUX - Provides multiplexing of logging and input to the repl.
 
 #include <stdio.h>
 #include <dirent.h>

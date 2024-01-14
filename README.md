@@ -15,38 +15,28 @@ We do not support or condone the use of any attacks on non consenting parties. P
 # Usage
 
 * Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up). This also describes flashing of the device.
-* The main interface for the system is the repl
+* The main interface for the system is the repl, which can be connected to via:
+    * USB serial (`idf.py -p /dev/ttyUSB0 monitor`) OR
+    * Network REPL (`nc 192.168.4.1 421`) (these settings can be changed in the menuconfig)
+* Through the repl one can interface, start, stop, and configure the main components.
+* Type `help` on the repl to see all possible commands
+* **NOTE** many of the components require putting the wifi driver in promiscious mode which if a client is connected will crash the system.
 
-
-...........
 
 # Software and the ESP32 System
 
-* Event Driven
-* Highly modularized
-* Event Queue is the base data structure
-* etc
-* etc
-* New Block DiagramWiring and 
-* Documentation found in header files of components
+The main software desgin is event driven and based on free RTOS queues. `main.c` inits all the important esp systems such as wifi, flash memory, etc. It also inits all our main components if early init is needed. Each component has an identical design which is shown here:
+
+```
+     
+ESP API ---> Producer ---> Queue ---> Consumer ---> ESP API  
+
+```
+
+Producers registers hooks with the with the ESP API i.e. a call back to be called when a packet hits the WIFI driver. Produces do not usually have their own thread / task context, their functions are registered and called by esp system threads. Producers push events to RTOS queues which are waited on by consumers. Consumers get their own task. This allows us to priotize tasks based on importance of execution. Consumers usually then call into the ESP API either to log events or to write to disk etc. 
+
+## System Map
  
-## TODO
-* pkt sniffer and loggers, queue based
-* EAPOL logger may have issues if multiple come in or only partial come in
-* The way we save eapol keys and the way the way the tcp server work is jank
-* Finish the table below
-    * DOC
-    * mem
-* look into exactly what is happining when we crack
-    * maybe make a python script for that 
-* Push attacks doc to component headers
-* IP Logger
-* Check if a network has PMF
-* power analysis
-* Make AP hidden
-* Memory and Perfomance Analysis
-* Pipe repl traffic over the AP?
-* enumeration of tasks, files, and memory
 
 
 ## Coding Standards
@@ -102,3 +92,20 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * [LCD 2004 w/ i2c backpack](https://www.amazon.com/dp/B0C1G9GBRZ?psc=1&ref=ppx_yo2ov_dt_b_product_details)
 * [Battery Pack](https://www.walmart.com/ip/onn-Portable-Battery-4k-mAh-Black/934734622?wmlspartner=wlpa&selectedSellerId=0&wl13=2070&adid=22222222277934734622_117755028669_12420145346&wmlspartner=wmtlabs&wl0=&wl1=g&wl2=c&wl3=501107745824&wl4=aud-2230653093054:pla-306310554666&wl5=9033835&wl6=&wl7=&wl8=&wl9=pla&wl10=8175035&wl11=local&wl12=934734622&wl13=2070&veh=sem_LIA&gclsrc=aw.ds&&adid=22222222237934734622_117755028669_12420145346&wl0=&wl1=g&wl2=c&wl3=501107745824&wl4=aud-2230653093054:pla-306310554666&wl5=9033835&wl6=&wl7=&wl8=&wl9=pla&wl10=8175035&wl11=local&wl12=934734622&veh=sem&gad_source=1&gclid=CjwKCAiA-bmsBhAGEiwAoaQNmpeMOc645RI29sXwDRy94ucsxWZd484QlGaFLX9-s_fhE79IKZzTjxoCHxQQAvD_BwE) - We have a custom case for this pack but obviously any will do
 * Rotary encoder - We used a random one we found but should be interoperable with any
+
+## TODO
+* pkt sniffer and loggers, queue based
+* EAPOL logger may have issues if multiple come in or only partial come in
+* The way we save eapol keys and the way the way the tcp server work is jank
+* Finish the table below
+    * DOC
+    * mem
+* look into exactly what is happining when we crack
+    * maybe make a python script for that 
+* Push attacks doc to component headers
+* IP Logger
+* Check if a network has PMF
+* power analysis
+* Make AP hidden
+* Memory and Perfomance Analysis
+* enumeration of tasks, files, and memory
