@@ -1,13 +1,32 @@
 #pragma once
 
+// The repl mux overwrites the base logging function such that when ever any
+// component logs our function gets called instead. We then copy each log 
+// message to a queue to be sent out on different mediums. The two mediums we
+// support at the moment are:
+//
+//    * UART
+//    * Wifi / TCP
+//
+// The flow looks something like this)
+//
+//                                       sock_recv    esp_conole_run
+// esp_log_set_vprintf                       |          ^
+//        |                                  V          |
+//        |                 |-------|    |-----------------| socket send
+//        V            |--->| Net Q |--->| REPL TCP Server |--------------->
+// |---------------|---|    |-------|    |-----------------|
+// | log_publisher |
+// |---------------|---|    |--------|    |--------|
+//                     |--->| UART Q |--->| printf |
+//                          |--------|    |--------|
 #include "esp_err.h"
 
-struct repl_mux_message
-{
-    char log_msg[CONFIG_REPL_MUX_MAX_LOG_MSG];
-} typedef repl_mux_message_t;
-
 //*****************************************************************************
-// blah blah
+// repl_mux_init) Create Qs for the UART and wifi mediums. Launch the consumer
+//                tasks that push log messages over the UART and wifi mediums.
+//                We overwrite the base logging function
+//
+// Returns) always ESP_OK or it crashes the system
 //*****************************************************************************
 esp_err_t repl_mux_init(void);

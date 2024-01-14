@@ -48,21 +48,19 @@ Producers registers hooks with the with the ESP API i.e. a call back to be calle
 * (3) All components *should* have both implementation and theory doc in the header
 * (4) All component API functions **shall** have a summary describing their execution logic, a description of their input args with possible values, and all possible return values and their meaning
     * While checking this its good to verify that the API function has appriopiatly strict check on input args and is returning error codes that are actually descriptive.
-* (5) All components *should* export a REPL  interface.
-* (6) All component API functions **shall** start with the name of the component
+* (5) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
-* (7) All components *should* use Kconfig params to set defines within their module
-* (8) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
+* (6) All components *should* use Kconfig params to set defines within their module
+* (7) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
 
-| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) | (8) |
-| --------------- | --- | --- | --- | --- | --- | --- | --- | --- |
-| eapol logger    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| mac logger      |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  |  X  |     |
-| repl_mux        |     |     |     |     |     |     |     |     |
-| main            |     |     |     |     |     |     |     |     |
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
+| --------------- | --- | --- | --- | --- | --- | --- | --- |
+| eapol logger    |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| mac logger      |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |     |
+| tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| repl_mux        |  X  |  X  |  X  |  X  |  X  |  X  |     |
 
 
 ## JTAG and running GDB
@@ -99,13 +97,15 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * The way we save eapol keys and the way the way the tcp server work is jank
 * Finish the table below
     * DOC
-    * mem
 * look into exactly what is happining when we crack
-    * maybe make a python script for that 
-* Push attacks doc to component headers
+    * maybe make a python script for that
+* Turn wsl by passer into deauth agent
 * IP Logger
 * Check if a network has PMF
+    * RSN capabilitiesS
 * power analysis
 * Make AP hidden
 * Memory and Perfomance Analysis
 * enumeration of tasks, files, and memory
+* Finish readme
+    * show all user input mediums

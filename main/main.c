@@ -126,6 +126,7 @@ static int do_free(int, char**);
 static int do_restart(int, char**);
 static int do_tasks(int, char**);
 static int do_get_task(int argc, char** argv);
+static int do_dump_wifi_stats(int argc, char** argv);
 
 static int do_send_deauth(int, char**);
 static int do_eapol_logger_init(int argc, char** argv);
@@ -140,7 +141,12 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 
 //*****************************************************************************
 // We configure the wifi such that it can both be a host and a client. Be sure
-// that you do not run pkt sniffer with a client connected or it will fail.
+// that you do not run pkt sniffer with a client connected or it will fail. We
+// implement the following scheme. When a client connects we kill the packet
+// sniffer its running. In the future if there are other services that cant be 
+// ran concurrently with a client than we will kill them as well. When we run
+// the pkt sniffer through the repl, we check if a client is connected and if
+// it is we deauth them.
 //*****************************************************************************
 #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
 #define EXAMPLE_ESP_WIFI_CHANNEL 1
@@ -148,6 +154,8 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 #define EXAMPLE_MAX_STA_CONN 1
 
 static void init_wifi(void);
+
+static int client_aid = -1;
 
 void app_main(void)
 {
@@ -174,6 +182,7 @@ void app_main(void)
     register_no_arg_cmd("restart", "SW Restart", &do_restart);
     register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
     register_no_arg_cmd("get_task", "Print name of current task", &do_get_task);
+    register_no_arg_cmd("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
     register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
@@ -257,6 +266,27 @@ static void initialize_nvs(void)
 //*****************************************************************************
 // Init Wifi Module
 //*****************************************************************************
+
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                                    int32_t event_id, void* event_data)
+{
+    if (event_id == WIFI_EVENT_AP_STACONNECTED) 
+    {
+        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
+
+        if(pkt_sniffer_is_running())
+        {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_kill());
+        }
+
+        client_aid = (int) event->aid;  
+    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
+    {
+        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
+        client_aid = -1;
+    }
+}
+
 void init_wifi(void)
 {
         // ESP NET IF init
@@ -273,13 +303,12 @@ void init_wifi(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     // Handle dem wifi events on the default event loop
-    /*
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &wifi_event_handler,
                                                         NULL,
                                                         NULL));
-    */
+    
 
     wifi_config_t wifi_config = {
         .ap = {
@@ -340,7 +369,7 @@ static int do_send_deauth(int argc, char** argv)
 {
     if(argc != 3)
     {
-        printf("Usage) send_deauth <ap_mac> <sta_mac>");
+        esp_log_write(ESP_LOG_INFO, "","Usage) send_deauth <ap_mac> <sta_mac>");
         return 1;
     }
 
@@ -349,46 +378,46 @@ static int do_send_deauth(int argc, char** argv)
 
     if(sscanf(argv[1], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", ap_mac, ap_mac+1, ap_mac+2, ap_mac+3, ap_mac+4, ap_mac+5) != 6)
     {
-        printf("Error parsing ap_mac = %s\n", argv[1]);
+        esp_log_write(ESP_LOG_INFO, "","Error parsing ap_mac = %s\n", argv[1]);
         return 1;
     }
 
     if(sscanf(argv[2], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", sta_mac, sta_mac+1,sta_mac+2, sta_mac+3, sta_mac+4,sta_mac+5) != 6)
     {
-        printf("Error parsing sta_mac = %s\n", argv[2]);
+        esp_log_write(ESP_LOG_INFO, "","Error parsing sta_mac = %s\n", argv[2]);
         return 1;
     }
 
-    printf("Deauthing "MACSTR" from "MACSTR"\n", MAC2STR(sta_mac), MAC2STR(ap_mac));
-    ESP_ERROR_CHECK(wsl_bypasser_send_deauth_frame_targted(ap_mac, sta_mac));
+    esp_log_write(ESP_LOG_INFO, "","Deauthing "MACSTR" from "MACSTR"\n", MAC2STR(sta_mac), MAC2STR(ap_mac));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(wsl_bypasser_send_deauth_frame_targted(ap_mac, sta_mac));
 
     return 0;
 }
 
 static void dump(void* args)
 {
-    int16_t n, i;
-    int8_t n_ap;
-    ap_t ap;
-    sta_t sta;    
-    ESP_ERROR_CHECK(mac_logger_get_sta_list_len(&n));
+    int16_t n = 0, i;
+    int8_t n_ap = 0;
+    ap_t ap = {0};
+    sta_t sta = {0};    
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta_list_len(&n));
     
-    printf("STA LIST: \n");
+    esp_log_write(ESP_LOG_INFO, "","STA LIST: \n");
     for(i = 0; i < n; ++i)
     {
-        ESP_ERROR_CHECK(mac_logger_get_sta(i, &sta));
-        printf("%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta(i, &sta));
+        esp_log_write(ESP_LOG_INFO, "","%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
     }
-    printf("%d stas\n\n", n);
+    esp_log_write(ESP_LOG_INFO, "","%d stas\n\n", n);
 
-    ESP_ERROR_CHECK(mac_logger_get_ap_list_len(&n_ap));
-    printf("AP LIST: \n");
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap_list_len(&n_ap));
+    esp_log_write(ESP_LOG_INFO, "","AP LIST: \n");
     for(i = 0; i < n_ap; ++i)
     {
-        ESP_ERROR_CHECK(mac_logger_get_ap(i, &sta, &ap));
-        printf("%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap(i, &sta, &ap));
+        esp_log_write(ESP_LOG_INFO, "","%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
     }
-    printf("%d aps\n\n", n_ap);
+    esp_log_write(ESP_LOG_INFO, "","%d aps\n\n", n_ap);
 }
 
 static int do_mac_logger_init(int argc, char** argv)
@@ -405,7 +434,7 @@ static int do_mac_logger_dump(int argc, char** argv)
 
 static int do_eapol_logger_init(int argc, char** argv)
 {
-    ESP_ERROR_CHECK(eapol_logger_init(NULL));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_init(NULL));
     return 0;
 }
 
@@ -418,32 +447,32 @@ static void _cb(wifi_promiscuous_pkt_t* p,
                 wifi_promiscuous_pkt_type_t type)
 {
 
-    printf("TYPE=");
+    esp_log_write(ESP_LOG_INFO, "","TYPE=");
     switch(type)
     {
         case WIFI_PKT_MGMT:
-            printf("Man ");
+            esp_log_write(ESP_LOG_INFO, "","Man ");
             break;
         case WIFI_PKT_CTRL:
-            printf("Ctl ");
+            esp_log_write(ESP_LOG_INFO, "","Ctl ");
             break;
         case WIFI_PKT_DATA:
-            printf("Dat ");
+            esp_log_write(ESP_LOG_INFO, "","Dat ");
             break;
         case WIFI_PKT_MISC:
-            printf("Mis ");
+            esp_log_write(ESP_LOG_INFO, "","Mis ");
             break;
         default:
             break;
     }
 
-    printf("STYPE=%d ", get_subtype(p->payload));
+    esp_log_write(ESP_LOG_INFO, "","STYPE=%d ", get_subtype(p->payload));
 
     uint8_t* dst = p->payload + 4;
     uint8_t* src = p->payload + 10;
     uint8_t* ap =  p->payload + 16;
 
-    printf("DST="MACSTR" SRC="MACSTR" AP="MACSTR"\n", MAC2STR(dst),
+    esp_log_write(ESP_LOG_INFO, "","DST="MACSTR" SRC="MACSTR" AP="MACSTR"\n", MAC2STR(dst),
                                                       MAC2STR(src),
                                                       MAC2STR(ap));
 
@@ -464,7 +493,7 @@ static int sscanf_helper(uint8_t* mac, char* s)
 
     if(ret != 6)
     {
-        printf("Failed to parse AP MAC: %s\n", s);
+        esp_log_write(ESP_LOG_INFO, "","Failed to parse AP MAC: %s\n", s);
         return 1;
     }
 
@@ -475,7 +504,7 @@ static int do_pkt_sniffer_add_filter(int argc, char** argv)
 {
     if(argc != 4)
     {
-        printf("Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL>");
+        esp_log_write(ESP_LOG_INFO, "","Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL>");
         return 1;
     }
 
@@ -499,7 +528,7 @@ static int do_pkt_sniffer_add_filter(int argc, char** argv)
     }
 
     filt_cb.cb = _cb;
-    ESP_ERROR_CHECK(pkt_sniffer_add_filter(&filt_cb));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_add_filter(&filt_cb));
 
     return 0;
 
@@ -509,8 +538,13 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
 {
     if(argc != 2)
     {
-        printf("Usage: pkt_sniffer_launch <channel>");
+        esp_log_write(ESP_LOG_INFO, "","Usage: pkt_sniffer_launch <channel>");
         return 1;
+    }
+
+    if(client_aid > -1)
+    {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_deauth_sta(client_aid));
     }
 
     wifi_promiscuous_filter_t filt = 
@@ -518,20 +552,20 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
         .filter_mask=WIFI_PROMIS_FILTER_MASK_ALL
     };
 
-    ESP_ERROR_CHECK(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10), filt));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10), filt));
 
     return 0;
 }
 
 static int do_pkt_sniffer_kill(int argc, char** argv)
 {
-    ESP_ERROR_CHECK(pkt_sniffer_kill());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_kill());
     return 0;
 }
 
 static int do_pkt_sniffer_clear(int argc, char** argv)
 {
-    ESP_ERROR_CHECK(pkt_sniffer_clear_filter_list());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_clear_filter_list());
     return 0 ;
 }
 
@@ -550,7 +584,7 @@ static int do_part_table(int argc, char** argv)
     {
         part = esp_partition_get(part_iter);
 
-        printf("%-16s  0x%08lx  0x%08lx\n", part->label, part->address, part->size);
+        esp_log_write(ESP_LOG_INFO, "","%-16s  0x%08lx  0x%08lx\n", part->label, part->address, part->size);
 
         part_iter = esp_partition_next(part_iter);
     }
@@ -564,13 +598,13 @@ static int do_ls(int argc, char** argv)
     DIR *d;
     struct dirent *dir;
 
-    printf("%s\n", MOUNT_PATH);
+    esp_log_write(ESP_LOG_INFO, "","%s\n", MOUNT_PATH);
     d = opendir(MOUNT_PATH);
     if(d)
     {
         while((dir = readdir(d))!=NULL)
         {
-            printf("   - %s\n", dir->d_name);
+            esp_log_write(ESP_LOG_INFO, "","   - %s\n", dir->d_name);
         }
         closedir(d);
     }
@@ -581,7 +615,7 @@ static int do_df(int argc, char **argv)
 {
     size_t total = 0, used = 0;
     esp_spiffs_info(NULL, &total, &used);
-    printf("Partition size: total: %d, used: %d\n", total, used);
+    esp_log_write(ESP_LOG_INFO, "","Partition size: total: %d, used: %d\n", total, used);
 
     return 0;
 }
@@ -590,7 +624,7 @@ static int do_cat(int argc, char **argv)
 {
     if(argc != 2)
     {
-        printf("Usage: cat <path>\n");
+        esp_log_write(ESP_LOG_INFO, "","Usage: cat <path>\n");
         return 1;
     }
 
@@ -605,7 +639,7 @@ static int do_cat(int argc, char **argv)
     
     while(fgets(line, 81, f))
     {
-        printf("%s", line);
+        esp_log_write(ESP_LOG_INFO, "","%s", line);
     }
 
     fclose(f);
@@ -624,7 +658,7 @@ static int do_rm(int argc, char** argv)
         while((dir = readdir(d))!=NULL)
         {
             snprintf(path, 33, "%s/%.22s", MOUNT_PATH, dir->d_name);
-            printf("Removing %s\n",path);
+            esp_log_write(ESP_LOG_INFO, "","Removing %s\n",path);
             remove(path);
         }
         closedir(d);
@@ -637,14 +671,14 @@ static int do_dump_event_log(int argc, char** argv)
 {
     if(argc != 2)
     {
-        printf("Usage: dump_event_log <file>\n");
+        esp_log_write(ESP_LOG_INFO, "","Usage: dump_event_log <file>\n");
         return 1;
     }
 
     const char* path = argv[1];
     FILE* f = fopen(path, "w");
 
-    ESP_ERROR_CHECK(esp_event_dump(f));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_event_dump(f));
 
     fclose(f);
     return 0;
@@ -654,10 +688,22 @@ static int do_dump_event_log(int argc, char** argv)
 // Random system repl func
 //*****************************************************************************
 
+static int do_dump_wifi_stats(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "Usage: dump_wifi_stats <modules>");
+        return 1;
+    }
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_statis_dump((uint8_t) strtol(argv[1], NULL,10)));
+    return 0;
+}
+
 static int do_get_task(int argc, char** argv)
 {
     char* name = pcTaskGetName(xTaskGetCurrentTaskHandle());
-    printf("Current Task = %s\n", name);
+    esp_log_write(ESP_LOG_INFO, "","Current Task = %s\n", name);
     return 0;
 }
 
@@ -674,7 +720,7 @@ static int do_dump_soc_regions(int argc, char **argv)
 
     if(argc != 3)
     {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        esp_log_write(ESP_LOG_INFO, "","Usage soc_regions <all | free> <ext | cond>\n");
         return 1;
     }
 
@@ -699,7 +745,7 @@ static int do_dump_soc_regions(int argc, char **argv)
     }
     else
     {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        esp_log_write(ESP_LOG_INFO, "","Usage soc_regions <all | free> <ext | cond>\n");
         return 1;
     }
 
@@ -709,7 +755,7 @@ static int do_dump_soc_regions(int argc, char **argv)
         for(i = 0; i < num_regions ; ++i)
         {
             b = &regions[i];   
-            printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
+            esp_log_write(ESP_LOG_INFO, "","Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
                b->start, b->size, soc_memory_types[b->type].name, b->iram_address);
         }
     }
@@ -724,7 +770,7 @@ static int do_dump_soc_regions(int argc, char **argv)
             // Found D/IRAM type assume to hit discontigous
             if((b->type == 1) && (a->type != 1))
             {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+                esp_log_write(ESP_LOG_INFO, "","Start = 0x%x   Size = 0x%x   Type = %-6s\n",
                        a->start, size, soc_memory_types[a->type].name);
                 a = b;
                 size = a->size;
@@ -732,7 +778,7 @@ static int do_dump_soc_regions(int argc, char **argv)
             }
             else if(a->type == 1)
             {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
+                esp_log_write(ESP_LOG_INFO, "","Start = 0x%x   Size = 0x%x   Type = %-6s   IRAM Addr = 0x%x\n",
                         a->start, a->size, soc_memory_types[a->type].name, a->iram_address);
                 a = b;
                 size = a->size;
@@ -749,7 +795,7 @@ static int do_dump_soc_regions(int argc, char **argv)
             // Found Dis cont, print and reset a
             else
             {
-                printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+                esp_log_write(ESP_LOG_INFO, "","Start = 0x%x   Size = 0x%x   Type = %-6s\n",
                a->start, size, soc_memory_types[a->type].name);
                a=b;
                size = a->size;
@@ -757,12 +803,12 @@ static int do_dump_soc_regions(int argc, char **argv)
             }
         }
 
-        printf("Start = 0x%x   Size = 0x%x   Type = %-6s\n",
+        esp_log_write(ESP_LOG_INFO, "","Start = 0x%x   Size = 0x%x   Type = %-6s\n",
                      a->start, size, soc_memory_types[a->type].name);
     }
     else
     {
-        printf("Usage soc_regions <all | free> <ext | cond>\n");
+        esp_log_write(ESP_LOG_INFO, "","Usage soc_regions <all | free> <ext | cond>\n");
         return 1;
     }
 
@@ -790,7 +836,7 @@ static int do_tasks(int argc, char **argv)
 
 static int do_free(int argc, char **argv)
 {
-    printf("%"PRIu32"\n", esp_get_free_heap_size());
+    esp_log_write(ESP_LOG_INFO, "","%"PRIu32"\n", esp_get_free_heap_size());
     return 0;
 }
 

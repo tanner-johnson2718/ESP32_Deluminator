@@ -20,6 +20,11 @@
 #define UART_Q 0
 #define NET_Q 1
 
+struct repl_mux_message
+{
+    char log_msg[CONFIG_REPL_MUX_MAX_LOG_MSG];
+} typedef repl_mux_message_t;
+
 static const char* TAG = "REPL MUX";
 
 static uint8_t queue_active[CONFIG_REPL_MUX_N_QUEUES] = {0};
@@ -38,7 +43,7 @@ static void uart_consumer_task_func(void* args)
     {
         if(xQueueReceive(qs[UART_Q], &msg, portMAX_DELAY))
         {
-            printf(msg.log_msg);;
+            printf(msg.log_msg);
         }
     }
 
@@ -123,7 +128,7 @@ static void net_consumer_task_func(void* args)
         queue_active[NET_Q] = 1;
         while(1)
         {
-            if(xQueueReceive(qs[NET_Q], &msg, 100 / portTICK_PERIOD_MS))
+            while(xQueueReceive(qs[NET_Q], &msg, 100 / portTICK_PERIOD_MS))
             {
                 if(send(client_socket, msg.log_msg, strlen(msg.log_msg), 0) == 0)
                 {
@@ -166,7 +171,10 @@ static int log_publisher(const char* string, va_list arg_list)
         if(queue_active[i])
         {
             vsnprintf(msg.log_msg, CONFIG_REPL_MUX_MAX_LOG_MSG, string, arg_list);
-            xQueueSend(qs[i], (void*) &msg, TTL);
+            if(!xQueueSend(qs[i], (void*) &msg, TTL))
+            {
+                printf("REPL MUX QUEUE FULL!!\n");
+            }
         }
     }
 
@@ -191,7 +199,7 @@ esp_err_t repl_mux_init(void)
 
     TaskHandle_t h;
     xTaskCreate(uart_consumer_task_func,
-                "UART repl mux consumer", 
+                "UART repl mux", 
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 
                 CONFIG_REPL_MUX_CONSUMER_PRIO,
@@ -199,7 +207,7 @@ esp_err_t repl_mux_init(void)
     assert(h);
 
     xTaskCreate(net_consumer_task_func,
-                "NET repl mux consumer",
+                "NET repl mux",
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 
                 CONFIG_REPL_MUX_CONSUMER_PRIO,

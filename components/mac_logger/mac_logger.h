@@ -28,7 +28,30 @@
 
 // As an addendum we added later, we also have second AP list index we maintain.
 // That is the ap assoc index. This index will point to the AP in the AP list
-// for which a sta is connected to or associated with.
+// for which a sta is connected to or associated with. WIth this we can also 
+// track how many STAs are connected to an AP
+
+// Notes on Beacon PKTs
+//
+// * Sent automatically by all acccess points at a regular interval.
+// * FC = `0x8000`
+//     * This decodes to a frame of type Management and a subtype of beacon
+// * DA = `ff:ff:ff:ff:ff:ff` and SA=BSSID
+// * In a beacon frame rate of beacon frame sent is advertised
+// * Capabilites, SSID (the ascii name of the AP), Supported rates are all sent.
+// * To see this, do a dump with the `-e` flag targeting an AP: `sudo airodump-ng wlp5s0mon -e --bssid B6:FE:F4:C3:ED:EE -c 6 -w out`
+// * Open wire shark on the .cap file and you should see a butt load of beacons
+// * When scanning for APs listening for beacons is considered a passive scan
+// 
+// Note on Probe PKTs
+// 
+// * Deliberatley sent by the station (STA) to the AP aka an active AP scan
+// * FC = `0x4000`
+//     * This decodes to a managment type with probe request sub type
+// * DA = `ff:ff:ff:ff:ff:ff` = BSSID
+// * SA = <sender MAC>
+// * The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
+// * To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
 
 
 #define SSID_MAX_LEN 33
