@@ -144,9 +144,7 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 // that you do not run pkt sniffer with a client connected or it will fail. We
 // implement the following scheme. When a client connects we kill the packet
 // sniffer its running. In the future if there are other services that cant be 
-// ran concurrently with a client than we will kill them as well. When we run
-// the pkt sniffer through the repl, we check if a client is connected and if
-// it is we deauth them.
+// ran concurrently with a client than we will kill them as well.
 //*****************************************************************************
 #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
 #define EXAMPLE_ESP_WIFI_CHANNEL 1
@@ -154,8 +152,6 @@ static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 #define EXAMPLE_MAX_STA_CONN 1
 
 static void init_wifi(void);
-
-static int client_aid = -1;
 
 void app_main(void)
 {
@@ -272,18 +268,16 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 {
     if (event_id == WIFI_EVENT_AP_STACONNECTED) 
     {
-        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
+        // wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
 
         if(pkt_sniffer_is_running())
         {
             ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_kill());
         }
-
-        client_aid = (int) event->aid;  
+  
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
     {
-        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        client_aid = -1;
+        // wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
     }
 }
 
@@ -540,11 +534,6 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
     {
         esp_log_write(ESP_LOG_INFO, "","Usage: pkt_sniffer_launch <channel>");
         return 1;
-    }
-
-    if(client_aid > -1)
-    {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_deauth_sta(client_aid));
     }
 
     wifi_promiscuous_filter_t filt = 
