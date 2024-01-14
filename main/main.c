@@ -141,11 +141,11 @@ static void init_wifi(void);
 void app_main(void)
 {
     // Dont mix up this order ... it matters
-    ESP_ERROR_CHECK(repl_mux_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
     initialize_filesystem();
     init_wifi();
+    ESP_ERROR_CHECK(repl_mux_init());
 
     // ESP IDF REPL Func Registration
     esp_console_register_help_command();

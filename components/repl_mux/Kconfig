@@ -23,5 +23,13 @@ menu "REPL MUX Config"
     config REPL_MUX_WAIT_MS
         int "Time in ms to wait for queue to clear up to publish more logs"
         default 10
-        
+
+    config REPL_MUX_IP
+        string "IP of repl server"
+        default "192.168.4.1"
+    
+    config REPL_MUX_PORT
+        int "Port of repl server"
+        default 421
+
 endmenu
