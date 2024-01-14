@@ -17,10 +17,15 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * Set up the esp-idf build env as we describe [here](https://github.com/tanner-johnson2718/PI_JTAG_DBGR/blob/master/writeups/Init_PI_JTAG_Test.md#esp-32-set-up). This also describes flashing of the device.
 * The main interface for the system is the repl, which can be connected to via:
     * USB serial (`idf.py -p /dev/ttyUSB0 monitor`) OR
-    * Network REPL (`nc 192.168.4.1 421`) (these settings can be changed in the menuconfig)
+    * REPL TCP server (`nc 192.168.4.1 421`) (these settings can be changed in the menuconfig)
 * Through the repl one can interface, start, stop, and configure the main components.
 * Type `help` on the repl to see all possible commands
+    * When using REPL TCP server type `help_net`
 * **NOTE** many of the components require putting the wifi driver in promiscious mode which if a client is connected will crash the system.
+    * When connecting to access point these will be automatically stoppped
+    * We have delayed launched functions that will launch these afte a delay so you can disconnect from the device.
+
+## Typical Attack Flow
 
 
 # Software and the ESP32 System
@@ -109,3 +114,5 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * enumeration of tasks, files, and memory
 * Finish readme
     * show all user input mediums
+* implement help_net
+* implement delayed launch
