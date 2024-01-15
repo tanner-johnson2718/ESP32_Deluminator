@@ -35,7 +35,7 @@
 // disk and sending over network the lengths are written first, with each len
 // fitting in a 2 byte integer, followed by the packet data with no padding.
 
-// When flushing to disk we name the file the first 21 bytes or so of the
+// When flushing to disk we name the file the first 19 bytes or so of the
 // ssid. This is just a caveat given that an ssid could be of 32 bytes but
 // the max len of a file in spiffs is 32 including the mount point.
 

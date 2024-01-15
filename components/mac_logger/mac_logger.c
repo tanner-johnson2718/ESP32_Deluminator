@@ -283,7 +283,7 @@ static void eapol_dump_to_disk(uint8_t ap_index)
 {
     char path[MAX_SSID_LEN];
 
-    snprintf(path, MAX_SSID_LEN, "%s/%.21s.pkt", MOUNT_PATH, ap_list[ap_index].ssid);
+    snprintf(path, MAX_SSID_LEN, "%s/%.19s.pkt", MOUNT_PATH, ap_list[ap_index].ssid);
     
     ESP_LOGI(TAG, "Opening %s to writeout eapol pkts", path);
     FILE* f = fopen(path, "w");
@@ -399,8 +399,8 @@ void parse_eapol_pkt(uint8_t eapol_index, uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctr
         return;
     }
 
-    memcpy(ap_list[ap_index].eapol_buffer + (eapol_index*EAPOL_MAX_PKT_LEN), rx_ctrl->sig_len);
-    ap_list[ap_index].eapol_pkt_lens[eapol_index] = len;
+    memcpy(ap_list[ap_index].eapol_buffer + (eapol_index*EAPOL_MAX_PKT_LEN), p, rx_ctrl->sig_len);
+    ap_list[ap_index].eapol_pkt_lens[eapol_index] = rx_ctrl->sig_len;
     ESP_LOGI(TAG, "%s -> Eapol Captured (%d/6)", ap_list[ap_index].ssid, eapol_index);
 
     uint8_t i;
@@ -427,7 +427,7 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
         int8_t eapol_index = get_eapol_index(p->payload, &(p->rx_ctrl));
         if(eapol_index != -1)
         {
-            parse_eapol_pkt(eapol_index + 2, p->payload);
+            parse_eapol_pkt(eapol_index + 2, p->payload, &(p->rx_ctrl));
         }
         else
         {
@@ -442,11 +442,11 @@ void mac_logger_cb(wifi_promiscuous_pkt_t* p,
         }
         else if(is_assoc_req(p->payload))
         {
-            parse_eapol_pkt(0, p->payload);
+            parse_eapol_pkt(0, p->payload, &(p->rx_ctrl));
         }
         else if(is_assoc_res(p->payload))
         {
-            parse_eapol_pkt(1, p->payload);
+            parse_eapol_pkt(1, p->payload, &(p->rx_ctrl));
         }
     }
 }
