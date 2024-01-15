@@ -3,33 +3,47 @@
 #include "esp_err.h"
 #include "pkt_sniffer.h"
 
-// In this component we implement our own AP and STA logger. An AP is a wifi
-// acces point. An STA is a device or station that may or may be associated
-// with an AP. This component requires the pkt sniffer component. 
+// Goal of the component is to fill in this data structure by sniffing inbound
+// packets:
 
-// Data Structures)
-//
-//   STA List                     AP List
-// |------------------------|     |---------|
-// | S0 | S1 | S2 | S3 | S4 |     | A0 | A1 |
-// |------------------------|     |---------|   
-//         |         |               |   |
-//         |         --------------------|
-//         --------------------------|
-//
-// Consider the above example. We have seen a total of 5 unique MACs on the
-// channel we are scanning. We send out a probe request and hear a response or 
-// we possibly intercept a beacon telling us the MAC we stored in the 1th pos
-// is actually an AP. We then further parse that packet to fill in the details
-// in the AP struct and add it to the AP list at the 0th pos. Thus the AP list
-// is like an addendum to some of the MACS stored in the STA list. Their are
-// indexes in each struct pointing back to one another and if a MAC is not an
-// AP then we set that index to -1.
+// AP)
+//    - SSID
+//    - BSSID (MAC)
+//    - Channel
+//    - RSSI
+//    - PMF Capable?
+//    - authmode
+//    - pairwise cipher
+//    - group cipher
+//    - eapol packet lens   (lens of each pkt in buffer)
+//    - eapol packet buffer (fits 6 pkt of fixed max size)
+//    - number of associated stas
+//    - STA 0
+//    - ...
+//    - STA N-1
 
-// As an addendum we added later, we also have second AP list index we maintain.
-// That is the ap assoc index. This index will point to the AP in the AP list
-// for which a sta is connected to or associated with. WIth this we can also 
-// track how many STAs are connected to an AP
+// We allocate a single buffer to store a single WPA2 handshake. When all 
+// packets of the handshake have been found we flush them to disk and reset the
+// in mem buffer that holds them. The in ram buffer is as follows:
+//
+// |-----------|-----------|---------|---------|---------|---------|
+// | Assoc Req | Assoc Res | EAPOL 1 | EAPOL 2 | EAPOL 3 | EAPOL 4 |
+// |-----------|-----------|---------|---------|---------|---------|
+// 
+// Each of the 6 packet slots gets a 256 buffer. If the packet is smaller we
+// just pad the rest as we maintain the lengths of each packet. When dumping to
+// disk and sending over network the lengths are written first, with each len
+// fitting in a 2 byte integer, followed by the packet data with no padding.
+
+// When flushing to disk we name the file the first 21 bytes or so of the
+// ssid. This is just a caveat given that an ssid could be of 32 bytes but
+// the max len of a file in spiffs is 32 including the mount point.
+
+
+// Flow diagram)
+
+
+//      TODO!!!!
 
 // Notes on Beacon PKTs
 //
@@ -42,7 +56,7 @@
 // * To see this, do a dump with the `-e` flag targeting an AP: `sudo airodump-ng wlp5s0mon -e --bssid B6:FE:F4:C3:ED:EE -c 6 -w out`
 // * Open wire shark on the .cap file and you should see a butt load of beacons
 // * When scanning for APs listening for beacons is considered a passive scan
-// 
+
 // Note on Probe PKTs
 // 
 // * Deliberatley sent by the station (STA) to the AP aka an active AP scan
@@ -53,30 +67,48 @@
 // * The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
 // * To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
 
+// The connection process of an STA connectiong to an ap involves a 3 stage 
+// process. Authentication. Association and EAPOL. Authenitcation. This step is
+// mainly kept from the days of WEP and can be relatively ignored except for 
+// the fact that it initiates the next steps. Association. This step is 
+// important because it is where the STA declares the ssid for which it is 
+// connecting. If the AP is open this step would be the last. EAPOL. This is 
+// where crypto key info is exchanged. This is what we need to capture in order 
+// to capture ones encrypted psks.
 
 #define SSID_MAX_LEN 33
 #define MAC_LEN 6
+#define EAPOL_MAX_PKT_LEN 256
+#define EAPOL_NUM_PKTS    6
 
 struct sta
 {
     uint8_t mac[MAC_LEN];     // MAC Addr
     int8_t rssi;              // Last Known Signal Strength
-    int8_t ap_list_index;     // -1 if not AP
-    int8_t ap_assoc_index;    // -1 if not assoc traffic found
 } typedef sta_t;
 
 struct ap
 {
     uint8_t ssid[SSID_MAX_LEN];
+    uint8_t bssid[MAC_LEN];
     uint8_t channel;
-    int16_t sta_list_index;
+    int8_t rssi;
+    uint8_t eapol_written_out;
+    uint8_t eapol_pkt_lens[EAPOL_NUM_PKTS];
+    uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
     uint8_t num_assoc_stas;
+    sta_t stas[CONFIG_MAC_LOGGER_MAX_STAS];
 } typedef ap_t;
 
-// Packet Structures) 
-//    * Beacon
-//    * Probe Request
-//    * Probe Response
+struct ap_summary
+{
+    uint8_t ssid[SSID_MAX_LEN];
+    uint8_t bssid[MAC_LEN];
+    uint8_t channel;
+    int8_t rssi;
+    uint8_t eapol_written_out;
+    uint8_t num_assoc_stas;
+} typedef ap_summary_t;
 
 //*****************************************************************************
 // mac_logger_init) Register the mac_logger_cb with the pkt_sniffer and init
@@ -94,16 +126,6 @@ struct ap
 //*****************************************************************************
 esp_err_t mac_logger_init(uint8_t* ap_mac);
 
-//*****************************************************************************
-// mac_logger_sta_list_len) Put the current sta list in the passed pointer
-//
-// *n) Must be valid address as is not checked. 0 if there is timeout waiting
-//     for the lock else it is the current sta list size.
-//
-// Returns) ESP OK if actaul list len is used, else INVALID STATE if failed to
-//          grab the lock
-//***************************************************************************** 
-esp_err_t mac_logger_get_sta_list_len(int16_t* n);
 
 //*****************************************************************************
 // mac_logger_ap_list_len) Put the current ap list in the passed pointer
@@ -114,41 +136,37 @@ esp_err_t mac_logger_get_sta_list_len(int16_t* n);
 // Returns) ESP OK if actaul list len is used, else INVALID STATE if failed to
 //          grab the lock
 //*****************************************************************************
-esp_err_t mac_logger_get_ap_list_len(int8_t* n);
+esp_err_t mac_logger_get_ap_list_len(uint8_t* n);
+
 
 //*****************************************************************************
-// mac_logger_get_sta) Copies the sta struct from the sta list at the given
-//                     index to passed memory
-//
-// sta_list_index) index to copy from, is checked for range
-//
-// sta) A allocated chunk of memory that can fit a sta_t. Is not checked.
-//
-// Returns) OK            - Index valid, lock grabbed, sta filled
-//          INAVLID STATE - Cant grab Lock
-//          INVALID_ARG   - Index out of range
-//*****************************************************************************
-esp_err_t mac_logger_get_sta(int16_t sta_list_index, sta_t* sta);
-
-//*****************************************************************************
-// mac_logger_get_sta) Copies the sta struct and the ap struct from a given
-//                     ap index into the passed memory. Note this index is for
-//                     the seperate AP list, not the overall list of STAs. This
-//                     is useful if one wants to list all APs.
+// mac_logger_get_ap) Copies from the indicated index to the passed struct the
+//                    elements of an ap_summary_t.
 //
 // ap_list_index) index to copy from, is checked for range
 //
-// sta) A allocated chunk of memory that can fit a sta_t. Is not checked.
-//
-// ap) Allocated chunk memory that can hold an ap_t.
+// ap) Allocated chunk memory that can hold an ap_summary_t.
 //
 // Returns) OK            - Index valid, lock grabbed, sta filled
 //          INAVLID STATE - Cant grab Lock
 //          INVALID_ARG   - Index out of range
-//          NOT_FOUND     - STA list index in AP struct is out of range. This
-//                          is a rather bad error and indicates corruption.
 //*****************************************************************************
-esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap);
+esp_err_t mac_logger_get_ap(uint8_t ap_index, ap_summary_t* ap);
+
+
+//*****************************************************************************
+// mac_logger_get_sta) copy the sta from the indicated indicies into the passed
+//                     sta buffer.
+//
+// ap_index) index of ap to get sta from. Checked if in range.
+//
+// sta_index) sta index within ap. Checked if in range.
+//
+// Returns) OK            - Index valid, lock grabbed, sta filled
+//          INAVLID STATE - Cant grab Lock
+//          INVALID_ARG   - Index out of range
+//*****************************************************************************
+esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta);
 
 
 //*****************************************************************************

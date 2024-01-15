@@ -27,7 +27,6 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 ## Typical Attack Flow
 
-
 # Software and the ESP32 System
 
 The main software desgin is event driven and based on free RTOS queues. `main.c` inits all the important esp systems such as wifi, flash memory, etc. It also inits all our main components. Each component is well documented and has a well documented API. `main.c` has a current high level overview of the system and is a good place to start. Each component then exports an API that can be called via the repl commands registered in main. For each component refer to its header file for documentation.However, most components can be summarized with the following model: 
@@ -39,8 +38,6 @@ ESP API Call back -----> Publisher -----> Q ------> Consumer ------> ESP API
 ```
 
 Publishers registers hooks with the with the ESP API i.e. a call back to be called when a packet hits the WIFI driver. Publishers do not usually have their own thread / task context, their functions are registered and called by esp system threads. Producers push events to RTOS queues which are waited on by consumers. Consumers get their own task. This allows us to priotize tasks based on importance of execution. Consumers usually then call into the ESP API either to log events or to write to disk or send a packet over the net, etc.
- 
-
 
 ## Coding Standards
 
@@ -65,11 +62,9 @@ Publishers registers hooks with the with the ESP API i.e. a call back to be call
 | wsl_bypasser    |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | repl_mux        |  X  |  X  |  X  |  X  |  X  |  X  |     |
 
-
 ## JTAG and running GDB
 
 # 3D printed Case for v0.2+ (NO UI)
-
 
 # Wiring and 3D Printed Case for v0.1 LCD version
 
@@ -100,8 +95,6 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 ## TODO
 * pkt sniffer and loggers, tcp file server queue based
 * merge eapol and mac logger
-* Rewrite mac logger data structures
-* EAPOL logger may have issues if multiple come in or only partial come in
 * The way we save eapol keys and the way the way the tcp server work is jank
 * Finish the table below
     * DOC

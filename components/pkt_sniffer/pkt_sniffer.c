@@ -36,7 +36,6 @@ static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
     return 1;
 }
 
-
 static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
    

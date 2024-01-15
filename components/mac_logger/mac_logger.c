@@ -8,10 +8,8 @@
 #include "esp_log.h"
 
 static SemaphoreHandle_t lock;
-static sta_t sta_list[CONFIG_MAC_LOGGER_MAX_STAS];
-static int16_t sta_list_len = 0;
-static ap_t ap_list[CONFIG_MAC_LOGGER_MAX_APS];
-static int8_t ap_list_len = 0;
+static ap_t ap_list[CONFIG_MAC_LOGGER_MAX_APS] = { 0 };
+static uint8_t ap_list_len = 0;
 static uint8_t one_time_init_done = 0;
 
 static const char* TAG = "MAC LOGGER";
@@ -48,7 +46,7 @@ static void _release_lock(void)
 }
 
 //*****************************************************************************
-// Private STA List Accessor Functions
+// Private AP list accessors
 //*****************************************************************************
 
 static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
@@ -65,80 +63,141 @@ static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
     return 1;
 }
 
-static inline uint8_t* get_nth_mac(int16_t n) { return (uint8_t*) (sta_list + n); }
-static inline int8_t get_nth_rssi(int16_t n){ return sta_list[n].rssi; }
-
-static inline void set_nth_mac(int16_t n, uint8_t* m1)
+static inline void clear_ap(uint8_t i)
 {
-
-    uint8_t i;
-    for(i = 0; i < MAC_LEN; ++i)
-    {  
-        get_nth_mac(n)[i] = m1[i];
-    }
-
-}
-
-static inline void set_nth_rssi(int16_t n, int8_t rssi)
-{
-    sta_list[n].rssi = rssi;
-}
-
-static inline void set_nth_ap_index(int16_t n, int8_t _ap_index)
-{
-    sta_list[n].ap_list_index = _ap_index;
-}
-
-static inline void set_nth_ap_assoc_index(int16_t n, uint8_t* ap_mac)
-{
-
-    int8_t i, _ap_assoc_index = -1;
-    for(i = 0; i < ap_list_len; ++i)
+    if(i >= CONFIG_MAC_LOGGER_MAX_APS)
     {
-        uint8_t* test_mac = sta_list[ap_list[i].sta_list_index].mac;
-        if(mac_is_eq(ap_mac,test_mac))
-        {
-            _ap_assoc_index = i;
-            ap_list[i].num_assoc_stas++;
-            break;
-        }
-    }
-
-    sta_list[n].ap_assoc_index = _ap_assoc_index;
-}
-
-static inline void insert(uint8_t* m1, int8_t rssi, uint8_t* ap_mac)
-{
-    if(sta_list_len == CONFIG_MAC_LOGGER_MAX_STAS)
-    {
-        ESP_LOGE(TAG, "STA list full");
+        ESP_LOGE(TAG, "Tried to clear out of range AP");
         return;
     }
 
-    if(_take_lock()) { return; }
+    memset(ap_list + i, 0, sizeof(ap_t));
+}
 
-    int16_t i = 0;
-    for(; i < sta_list_len; ++i)
+static inline void clear_ap_list(void)
+{
+    uint8_t i;
+    for(i = 0; i < CONFIG_MAC_LOGGER_MAX_APS; ++i)
     {
-        if(mac_is_eq(m1, get_nth_mac(i)))
+        clear_ap(i);
+    }
+
+    ap_list_len = 0;
+}
+
+static inline void find_ap(uint8_t* ap_mac, int8_t* index)
+{
+    uint8_t i;
+    for(i = 0; i < ap_list_len; ++i)
+    {       
+        if(mac_is_eq(ap_mac, ap_list[i].bssid))
         {
-            set_nth_rssi(i, rssi);
-            _release_lock();
+            *index = i;
             return;
         }
     }
 
-    ++sta_list_len;
-    set_nth_mac(sta_list_len-1, m1);    
-    set_nth_rssi(sta_list_len-1, rssi);
-    set_nth_ap_index(sta_list_len-1, -1);
-    set_nth_ap_assoc_index(sta_list_len-1, ap_mac);
-    _release_lock();
+    *index = -1;
+}
+
+static inline void find_sta(uint8_t* sta_mac, int8_t ap_index, int8_t* sta_index)
+{
+    if(ap_index >= ap_list_len)
+    {
+        ESP_LOGE(TAG, "Queried STA w/ invalid AP index");
+        return;
+    }
+
+    uint8_t j;
+    for(j = 0; j < ap_list[ap_index].num_assoc_stas; ++j)
+    {
+        if(mac_is_eq(sta_mac, ap_list[ap_index].stas[j].mac))
+        {
+            *sta_index = j;
+            return;
+        }
+    }
+
+
+    *sta_index = -1;
+}
+
+static inline void update_ap_rssi(uint8_t ap_index, int8_t rssi)
+{
+    if(ap_index >= ap_list_len)
+    {
+        ESP_LOGE(TAG, "Tried to update rssi of AP with invalid AP index");
+        return;
+    }
+    ap_list[ap_index].rssi = rssi;
+}
+
+static inline void update_sta_rssi(uint8_t ap_index, uint8_t sta_index, int8_t rssi)
+{
+    if(ap_index >= ap_list_len)
+    {
+        ESP_LOGE(TAG, "Tried to update rssi of STA with invalid AP index");
+        return;
+    }
+
+    if(sta_index >= ap_list[ap_index].num_assoc_stas)
+    {
+        ESP_LOGE(TAG, "Tried to update rssi of STA with invalid STA index");
+        return;
+    }
+
+    ap_list[ap_index].stas[sta_index].rssi = rssi;
+}
+
+static inline void create_ap(char* ssid, uint8_t ssid_len, uint8_t* bssid, uint8_t channel, int8_t rssi)
+{
+    if(ap_list_len >= CONFIG_MAC_LOGGER_MAX_APS)
+    {
+        ESP_LOGE(TAG, "AP List Full");
+        return;
+    }
+
+    memcpy(ap_list[ap_list_len].ssid, ssid, ssid_len);
+    ap_list[ap_list_len].ssid[ssid_len] = 0;
+    memcpy(ap_list[ap_list_len].bssid, bssid, MAC_LEN);
+    ap_list[ap_list_len].channel = channel;
+    ap_list[ap_list_len].rssi = rssi;
+    ap_list_len++;
+}
+
+static inline void create_sta(uint8_t ap_index, uint8_t* sta_mac, int8_t rssi)
+{
+    if(ap_index >= ap_list_len )
+    {
+        ESP_LOGE(TAG, "Tried to create sta with invalid AP index");
+        return;
+    }
+
+    if(ap_list[ap_index].num_assoc_stas >= CONFIG_MAC_LOGGER_MAX_STAS)
+    {
+        ESP_LOGE(TAG, "AP %s sta list full", ap_list[ap_index].ssid);
+        return;
+    }
+
+    memcpy(ap_list[ap_index].stas[ap_list[ap_index].num_assoc_stas].mac, sta_mac, MAC_LEN);
+    ap_list[ap_index].stas[ap_list[ap_index].num_assoc_stas].rssi = rssi;
+    ap_list[ap_index].num_assoc_stas++;
 }
 
 //*****************************************************************************
-// Private AP list funcs
+// Packet Parsing Helpers
 //*****************************************************************************
+
+#define SEQ_NUM_LB        0x16
+#define SEQ_NUM_LB_MASK   0xF0
+#define SEQ_NUM_LB_RSHIFT 0x4
+#define SEQ_NUM_UB        0x17
+#define SEQ_NUM_UB_MASK   0xFF
+#define SEQ_NUM_UB_LSHIFT 0x8
+#define TO_DS_BYTE        0x1
+#define TO_DS_MASK        0x1
+#define FROM_DS_BYTE      0x1
+#define FROM_DS_MASK      0x2
 
 static inline uint8_t get_type(uint8_t* pkt)
 {
@@ -150,80 +209,202 @@ static inline uint8_t get_subtype(uint8_t* pkt)
     return (pkt[0] >> 4) & 0x0F;
 }
 
-// call this if and only if the packet is a beacon or probe response
-static inline void insert_ap(wifi_promiscuous_pkt_t* p)
+static inline int16_t get_seq_num(uint8_t* pkt)
 {
-    uint8_t* pkt = p->payload;
+    int16_t lb = (((int16_t)pkt[SEQ_NUM_LB]) & SEQ_NUM_LB_MASK) >> SEQ_NUM_LB_RSHIFT;
+    int16_t ub = (((int16_t)pkt[SEQ_NUM_UB]) & SEQ_NUM_UB_MASK) << SEQ_NUM_UB_LSHIFT; 
 
-    if(ap_list_len == CONFIG_MAC_LOGGER_MAX_APS)
+    return lb + ub;
+}
+
+static inline uint8_t get_to_ds(uint8_t* pkt)
+{
+    return !(!(pkt[TO_DS_BYTE] & TO_DS_MASK));
+}
+
+static inline uint8_t get_from_ds(uint8_t* pkt)
+{
+    return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
+}
+
+// assume type is known to be mgmt
+static inline uint8_t is_beacon(uint8_t* p)
+{
+    return get_subtype(p) == 8;
+}
+
+// assume type is known to be mgmt
+static inline uint8_t is_probe(uint8_t* p)
+{
+    return get_subtype(p) == 5;
+}
+
+// assume type is known to be mgmt
+static inline uint8_t is_assoc_req(uint8_t* p)
+{
+    return get_subtype(p) == 0;
+}
+
+// assume type is known to be mgmt
+static inline uint8_t is_assoc_res(uint8_t* p)
+{
+    return get_subtype(p) == 1;
+}
+
+// assume type is known to be data
+static inline int8_t get_eapol_index(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
+{
+    uint16_t len = rx_ctrl->sig_len;
+
+    if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
     {
-        ESP_LOGE(TAG, "AP list full");
+        // eapol
+        int16_t s = get_seq_num(p);
+        uint8_t to = get_to_ds(p);
+        uint8_t from = get_from_ds(p);
+
+        if     (s == 0 && to == 0 && from == 1) { return 0; }
+        else if(s == 0 && to == 1 && from == 0) { return 1; }
+        else if(s == 1 && to == 0 && from == 1) { return 2; }
+        else if(s == 1 && to == 1 && from == 0) { return 3; }
+    }
+
+    return -1;
+}
+
+//*****************************************************************************
+// Handling Eapol PKTS
+//*****************************************************************************
+
+
+
+//*****************************************************************************
+// Parse Inbound Packets
+//*****************************************************************************
+
+void parse_beacon_pkt(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
+{
+    if(rx_ctrl->sig_len < 0x26 + MAX_SSID_LEN)
+    {
         return;
     }
 
     if(_take_lock()){return;}
 
-    // search the sta list as it should be in there since we inserted the src
-    // address of all in coming frames.
-    int16_t i;
-    for(i = 0; i < sta_list_len; ++i)
-    {
-        if(mac_is_eq(pkt+10, get_nth_mac(i)))
-        {
-            break;
-        }
+    int8_t index;
+    find_ap(p + 16, &index);
+
+    if(index < 0)
+    {   
+        create_ap((char*)(p + 0x26), p[0x25], p+16, rx_ctrl->channel, rx_ctrl->rssi);
     }
-
-    if(i == sta_list_len)
+    else
     {
-        ESP_LOGE(TAG, "inserting AP for non existant station");
-        _release_lock();
-        return;
-    }
-
-    if(sta_list[i].ap_list_index != -1)
-    {
-        _release_lock();
-        return;
-    }
-
-    if(pkt[0x24] == 0 && pkt[0x25] > 0)
-    {
-        // found the ssid
-        ap_t* ap = ap_list+ ap_list_len;
-        
-        memcpy(ap->ssid, pkt+ 0x26, pkt[0x25]);
-        ap->ssid[pkt[0x25]] = 0;
-        ap->channel = p->rx_ctrl.channel;
-
-        ap->sta_list_index = i;
-        ap->num_assoc_stas = 0;
-        set_nth_ap_index(i, ap_list_len);
-
-        ++ap_list_len;
+        update_ap_rssi(index, rx_ctrl->rssi);
     }
 
     _release_lock();
+    return;
+}
+
+void parse_data_pkt(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
+{
+
+    if(_take_lock()){ return; }
+
+    int8_t ap_index;
+    find_ap(p+16, &ap_index);
+    
+    if(ap_index < 0)
+    {
+        _release_lock();
+        return;
+    }
+
+    int8_t sta_index;
+    uint8_t* sta_mac;
+    if(mac_is_eq(p+4, p+16)) { sta_mac = p + 10;}
+    else                     { sta_mac = p + 04; }
+
+    find_sta(sta_mac, ap_index, &sta_index);
+    if(sta_index < 0) { create_sta(ap_index, sta_mac, rx_ctrl->rssi );       }
+    else {              update_sta_rssi(ap_index, sta_index, rx_ctrl->rssi); }
+
+    _release_lock();
+    return;
+}
+
+void parse_eapol_pkt(uint8_t eapol_index, uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
+{
+    if(rx_ctrl->sig_len >= EAPOL_MAX_PKT_LEN)
+    {
+        ESP_LOGE(TAG, "Recved EAPOL pkt with len greater than %d", EAPOL_MAX_PKT_LEN);
+        return;
+    }
+
+    if(_take_lock()){ return; }
+
+    int8_t ap_index;
+    find_ap(p + 16, &ap_index);
+    if(ap_index < 0)
+    {
+        ESP_LOGE(TAG, "Recieved EAPOL pkt for unregistered AP??");
+        _release_lock();
+        return;
+    }
+
+    if(ap_list[ap_index].eapol_pkt_lens[eapol_index] != 0)
+    {
+        ESP_LOGE(TAG, "Possibly recved duplicate eapol pkt");
+        return;
+    }
+
+    memcpy(ap_list[ap_index].eapol_buffer + (eapol_index*EAPOL_MAX_PKT_LEN), rx_ctrl->sig_len);
+    ap_list[ap_index].eapol_pkt_lens[eapol_index] = len;
+    ESP_LOGI(TAG, "%s -> Eapol Captured (%d/6)", ap_list[ap_index].ssid, eapol_index);
+
+    _release_lock();
+    return;
+}
+
+void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
+                   wifi_promiscuous_pkt_type_t type)
+{
+    if(type == WIFI_PKT_DATA)
+    {
+        int8_t eapol_index = get_eapol_index(p->payload, &(p->rx_ctrl));
+        if(eapol_index != -1)
+        {
+            parse_eapol_pkt(eapol_index + 2, p->payload);
+        }
+        else
+        {
+            parse_data_pkt(p->payload, &(p->rx_ctrl));   
+        }
+    }
+    else if(type == WIFI_PKT_MGMT)
+    {
+        if(is_beacon(p->payload) || is_probe(p->payload))
+        {
+            parse_beacon_pkt(p->payload, &(p->rx_ctrl));
+        }
+        else if(is_assoc_req(p->payload))
+        {
+            parse_eapol_pkt(0, p->payload);
+        }
+        else if(is_assoc_res(p->payload))
+        {
+            parse_eapol_pkt(1, p->payload);
+        }
+    }
 }
 
 //*****************************************************************************
 //  Public Functions
 //*****************************************************************************
 
-esp_err_t mac_logger_get_sta_list_len(int16_t* n)
-{
-    if(_take_lock()) 
-    { 
-        *n = 0;
-        return ESP_ERR_INVALID_STATE; 
-    }
 
-    *n = sta_list_len;
-    _release_lock();
-    return ESP_OK;
-}
-
-esp_err_t mac_logger_get_ap_list_len(int8_t* n)
+esp_err_t mac_logger_get_ap_list_len(uint8_t* n)
 {
     if(_take_lock()) 
     { 
@@ -236,70 +417,54 @@ esp_err_t mac_logger_get_ap_list_len(int8_t* n)
     return ESP_OK;
 }
 
-esp_err_t mac_logger_get_sta(int16_t sta_list_index, sta_t* sta)
+esp_err_t mac_logger_get_ap(uint8_t ap_index, ap_summary_t* ap)
 {
     if(_take_lock())
     {
         return ESP_ERR_INVALID_STATE;
     }
 
-    if(sta_list_index >= sta_list_len || sta_list_index < 0)
-    {
-        ESP_LOGE(TAG, "invalid STA index");
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    memcpy(sta, sta_list + sta_list_index, sizeof(sta_t));
-    _release_lock();
-    return ESP_OK;
-}
-
-esp_err_t mac_logger_get_ap(int8_t ap_list_index, sta_t* sta, ap_t* ap)
-{
-    if(_take_lock())
-    {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if(ap_list_index >= ap_list_len || ap_list_index < 0)
+    if(ap_index >= ap_list_len)
     {
         ESP_LOGE(TAG, "invalid AP index");
+        _release_lock();
         return ESP_ERR_INVALID_ARG;
     }
 
-    int16_t sta_list_index = ap_list[ap_list_index].sta_list_index;
-    if(sta_list_index >= sta_list_len || sta_list_index < 0)
-    {
-        ESP_LOGE(TAG, "Invalid STA index pulled from AP %d", ap_list_index);
-        _release_lock();
-        return ESP_ERR_NOT_FOUND;
-    }
-
-
-    memcpy(sta, sta_list + sta_list_index, sizeof(sta_t));
-    memcpy(ap, ap_list + ap_list_index, sizeof(ap_t));
+    memcpy(ap->ssid, ap_list[ap_index].ssid, MAX_SSID_LEN);
+    memcpy(ap->bssid, ap_list[ap_index].bssid, MAC_LEN);
+    ap->channel = ap_list[ap_index].channel;
+    ap->rssi = ap_list[ap_index].rssi;
+    ap->eapol_written_out = ap_list[ap_index].eapol_written_out;
+    ap->num_assoc_stas = ap_list[ap_index].num_assoc_stas;
+    
     _release_lock();
     return ESP_OK;
 }
 
-void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
-                   wifi_promiscuous_pkt_type_t type)
+esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta)
 {
-    if(!(type == WIFI_PKT_DATA || type == WIFI_PKT_MGMT))
+    if(_take_lock()) { return ESP_ERR_INVALID_STATE; }
+
+
+    if(ap_index >= ap_list_len)
     {
-        return;
+        ESP_LOGE(TAG, "invalid AP index");
+        _release_lock();
+        return ESP_ERR_INVALID_ARG;
     }
 
-    uint8_t* src = p->payload + 10;
-    uint8_t* ap_mac = p->payload + 16;
-
-    insert(src, p->rx_ctrl.rssi, ap_mac);
-    
-    if(type == WIFI_PKT_MGMT && ((get_subtype(p->payload) == 8) || get_subtype(p->payload) == 5))
+    if(sta_index >= ap_list[ap_index].num_assoc_stas)
     {
-        insert_ap(p);
+        ESP_LOGE(TAG, "invalid STA index");
+        _release_lock();
+        return ESP_ERR_INVALID_ARG;
     }
 
+    memcpy(sta, &(ap_list[ap_index].stas[sta_index]), sizeof(sta_t));
+
+    _release_lock();
+    return ESP_OK;
 }
 
 esp_err_t mac_logger_init(uint8_t* ap_mac)
@@ -330,11 +495,9 @@ esp_err_t mac_logger_clear(void)
 {
     if(_take_lock()) {return ESP_ERR_INVALID_STATE; }
 
-    sta_list_len = 0;
-    ap_list_len = 0;
+    clear_ap_list();
 
     ESP_LOGI(TAG, "Cleared Lists");
     _release_lock();
     return ESP_OK;
 }
-

@@ -43,7 +43,6 @@
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
 #include "mac_logger.h"
-#include "eapol_logger.h"
 #include "wsl_bypasser.h"
 #include "repl_mux.h"
 
@@ -129,7 +128,6 @@ static int do_get_task(int argc, char** argv);
 static int do_dump_wifi_stats(int argc, char** argv);
 
 static int do_send_deauth(int, char**);
-static int do_eapol_logger_init(int argc, char** argv);
 static int do_mac_logger_init(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
 static int do_pkt_sniffer_add_filter(int argc, char** argv);
@@ -187,7 +185,6 @@ void app_main(void)
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
     register_no_arg_cmd("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
     register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init module", &do_mac_logger_init);
-    register_no_arg_cmd("eapol_logger_init", "Register the eapol logger with the pkt sniffer", &do_eapol_logger_init);
     register_no_arg_cmd("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
 
     // TCP File Server test driver repl functions
@@ -388,32 +385,6 @@ static int do_send_deauth(int argc, char** argv)
     return 0;
 }
 
-static void dump(void* args)
-{
-    int16_t n = 0, i;
-    int8_t n_ap = 0;
-    ap_t ap = {0};
-    sta_t sta = {0};    
-    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta_list_len(&n));
-    
-    esp_log_write(ESP_LOG_INFO, "","STA LIST: \n");
-    for(i = 0; i < n; ++i)
-    {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta(i, &sta));
-        esp_log_write(ESP_LOG_INFO, "","%02d) "MACSTR"   rssi=%d   ap_index=%d   assoc_index=%d\n",i, MAC2STR(sta.mac), sta.rssi, sta.ap_list_index, sta.ap_assoc_index);
-    }
-    esp_log_write(ESP_LOG_INFO, "","%d stas\n\n", n);
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap_list_len(&n_ap));
-    esp_log_write(ESP_LOG_INFO, "","AP LIST: \n");
-    for(i = 0; i < n_ap; ++i)
-    {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap(i, &sta, &ap));
-        esp_log_write(ESP_LOG_INFO, "","%02d) %-20s   channel=%d   sta_index=%d   num_stas=%d\n", i, ap.ssid, ap.channel, ap.sta_list_index, ap.num_assoc_stas);
-    }
-    esp_log_write(ESP_LOG_INFO, "","%d aps\n\n", n_ap);
-}
-
 static int do_mac_logger_init(int argc, char** argv)
 {
     mac_logger_init(NULL);
@@ -422,13 +393,31 @@ static int do_mac_logger_init(int argc, char** argv)
 
 static int do_mac_logger_dump(int argc, char** argv)
 {
-    dump(NULL);
-    return 0;
-}
+    uint8_t i, j, n;
+    ap_summary_t ap;
+    sta_t sta;
 
-static int do_eapol_logger_init(int argc, char** argv)
-{
-    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_init(NULL));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap_list_len(&n));
+    for(i = 0; i < n; ++i)
+    {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap(i, &ap));
+        esp_log_write(ESP_LOG_INFO,"", "%-20s\n", ap.ssid);
+        esp_log_write(ESP_LOG_INFO,"", MACSTR"\n", MAC2STR(ap.bssid));
+        esp_log_write(ESP_LOG_INFO,"", "Channel = %d\n", ap.channel);
+        esp_log_write(ESP_LOG_INFO,"", "RSSI = %d\n", ap.rssi);
+        esp_log_write(ESP_LOG_INFO,"", "EAPOL Written to disk = %d\n", ap.eapol_written_out);
+        esp_log_write(ESP_LOG_INFO,"", "Num Stas = %d\n", ap.num_assoc_stas);
+
+        for(j = 0; j < ap.num_assoc_stas; ++j)
+        {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta(i,j,&sta));
+            esp_log_write(ESP_LOG_INFO, "", "   "MACSTR" %d\n", MAC2STR(sta.mac), sta.rssi);
+        }
+
+        esp_log_write(ESP_LOG_INFO, "", "\n");
+    } 
+    
+    
     return 0;
 }
 
