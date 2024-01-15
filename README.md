@@ -55,8 +55,7 @@ Publishers registers hooks with the with the ESP API i.e. a call back to be call
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- |
-| eapol logger    |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| mac logger      |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| mac logger      |  X  |  X  |     |  X  |  X  |  X  |     |
 | pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |  X  |  X  |  X  |  X  |     |
@@ -94,12 +93,12 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 
 ## TODO
 * pkt sniffer and loggers, tcp file server queue based
-* merge eapol and mac logger
 * The way we save eapol keys and the way the way the tcp server work is jank
 * Finish the table below
     * DOC
 * look into exactly what is happining when we crack
     * maybe make a python script for that
+    * Only store pertinent eapol info
 * Turn wsl by passer into deauth agent
 * IP Logger
 * Check if a network has PMF

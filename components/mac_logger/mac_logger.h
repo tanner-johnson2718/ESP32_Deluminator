@@ -22,9 +22,9 @@
 //    - ...
 //    - STA N-1
 
-// We allocate a single buffer to store a single WPA2 handshake. When all 
-// packets of the handshake have been found we flush them to disk and reset the
-// in mem buffer that holds them. The in ram buffer is as follows:
+// We allocate a single buffer to store a single WPA2 handshake per AP. When all 
+// packets of the handshake have been found we flush them to disk. The in ram 
+// buffer is as follows:
 //
 // |-----------|-----------|---------|---------|---------|---------|
 // | Assoc Req | Assoc Res | EAPOL 1 | EAPOL 2 | EAPOL 3 | EAPOL 4 |
@@ -41,9 +41,9 @@
 
 
 // Flow diagram)
-
-
-//      TODO!!!!
+//
+//
+// 
 
 // Notes on Beacon PKTs
 //
