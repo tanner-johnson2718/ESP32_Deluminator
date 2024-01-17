@@ -92,7 +92,7 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * [Rotary encoder](https://www.amazon.com/dp/B07F26CT6B?psc=1&ref=ppx_yo2ov_dt_b_product_details)
 
 ## TODO
-* pkt sniffer and loggers, tcp file server queue based
+* tcp file server queue based
 * The way we save eapol keys and the way the way the tcp server work is jank
 * Finish the table below
     * DOC

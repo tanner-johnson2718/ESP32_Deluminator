@@ -1,9 +1,9 @@
 // This is the starting point for the esp32 deluminator. The main module here
-// inits all the important subsystems. These are)
+// inits all the important esp32 idf subsystems. These are)
 //
 //    * Flash memory w/ spiffs file system to store files
 //    * Flash memory w/ NVS storage for the wifi system
-//    * REPL serial interface for driving system
+//    * REPL serial console for driving system
 //    * Wifi in AP/STA mode so as to have an access point and station
 //
 // Next main registers all of our "services" or components to act on system
@@ -96,7 +96,7 @@ static void initialize_nvs(void);
 //
 // We also added a REPL MUX layer on top of the esp logging and esp console
 // modules. This allows us to 1) send logging data to multiple places and to
-// interact with the repl over the created wifi access point.
+// 2) interact with the repl over the created wifi access point.
 //
 // **NOTE**
 //    - printf only sends traffic over UART
