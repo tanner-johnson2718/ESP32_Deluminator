@@ -55,8 +55,8 @@ Publishers registers hooks with the with the ESP API i.e. a call back to be call
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- |
-| mac logger      |  X  |  X  |     |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |     |  X  |  X  |  X  |     |
+| mac logger      |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |  X  |  X  |  X  |  X  |     |
 | repl_mux        |  X  |  X  |  X  |  X  |  X  |  X  |     |

@@ -41,10 +41,20 @@
 
 
 // Flow diagram)
+//                                                    
+//                                                   |-> Beacon or Probe Response?  
+//  ESP Prom. -> Pkt Sniffer CB -> Mac Logger Queue -|-> EAPOL or Assoc? 
+//                                                   |-> Normal Data Packet?
 //
+// Beacon or Probe Response) If we see a becaon or probe response then register
+// or update the AP for which the packet came.
 //
-// 
-
+// EAPOL or Assoc) For the AP this traffic is on, add that whole packet in the
+// WPA2 sequence to the given APs EAPOL buffer. Duplicates are ignored.
+//
+// Normal Data Pkts) Normal data packets add or update an STA within an already
+// created AP. If no AP exists, ignore the pkt.
+//
 // Notes on Beacon PKTs
 //
 // * Sent automatically by all acccess points at a regular interval.
