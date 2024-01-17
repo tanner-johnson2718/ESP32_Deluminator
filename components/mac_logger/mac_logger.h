@@ -111,20 +111,19 @@ struct ap_summary
 } typedef ap_summary_t;
 
 //*****************************************************************************
-// mac_logger_init) Register the mac_logger_cb with the pkt_sniffer and init
-//                  the lock. If one clears the pkt filters, which deletes
-//                  the mac logger call back, then this can be recalled to
-//                  re-register it. WARNING, only recall this init func if
-//                  youve cleared the pkt sniffer funcs.
+// mac_logger_launch) Creates the q and lock if first time calling. Launches 
+//                    the mac logger task if not running, then registers the
+//                    filtered Q with the pkt sniffer. 
 //
 // ap_mac) Optional AP mac filter. If not NULL, the mac logger will only add
 //         stas that are sending traffic whose AP mac addr field matches that
 //         that is passed.
 //
-// Returns) What ever pkt_sniffer_add_filter returns. The init of the semaphore
-//          is asserted true.
+// Returns) OK            - Everything good
+//          INVALID_STATE - Already running or task create fail
+//          NO_MEM        - Q create fail
 //*****************************************************************************
-esp_err_t mac_logger_init(uint8_t* ap_mac);
+esp_err_t mac_logger_launch(uint8_t* ap_mac);
 
 
 //*****************************************************************************
@@ -176,3 +175,11 @@ esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta);
 //         INVALID_STATE - couldn't get lock
 //*****************************************************************************
 esp_err_t mac_logger_clear(void);
+
+
+//*****************************************************************************
+// mac_logger_kill) Kill the mac logger task
+//
+// Returns) ESP_OK on successful kill or INVALID STATE if couldnt get the lock
+//*****************************************************************************
+esp_err_t mac_logger_kill(void);

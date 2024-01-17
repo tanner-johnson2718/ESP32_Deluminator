@@ -15,7 +15,7 @@ static const char* TAG = "PKT SNIFFER";
 static uint8_t num_filters = 0;
 static uint8_t inited = 0;
 static uint8_t _pkt_sniffer_running = 0;
-pkt_sniffer_filtered_cb_t filtered_cbs[CONFIG_PKT_MAX_FILTERS];
+pkt_sniffer_filtered_src_t filtered_srcs[CONFIG_PKT_MAX_FILTERS];
 static SemaphoreHandle_t lock;
 
 //*****************************************************************************
@@ -38,8 +38,10 @@ static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
 
 static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
-   
+    pkt_sniffer_msg_t msg;
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
+    msg.p = p;
+    msg.type = type;
 
     if(p->rx_ctrl.rx_state != 0)
     {
@@ -60,22 +62,25 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
     {
-        if(filtered_cbs[i].ap_active &&  !mac_is_eq(ap, filtered_cbs[i].ap))
+        if(filtered_srcs[i].ap_active &&  !mac_is_eq(ap, filtered_srcs[i].ap))
         {
             continue;
         }
 
-        if(filtered_cbs[i].src_active &&  !mac_is_eq(src, filtered_cbs[i].src))
+        if(filtered_srcs[i].src_active &&  !mac_is_eq(src, filtered_srcs[i].src))
         {
             continue;
         }
 
-        if(filtered_cbs[i].dst_active &&  !mac_is_eq(dst, filtered_cbs[i].dst))
+        if(filtered_srcs[i].dst_active &&  !mac_is_eq(dst, filtered_srcs[i].dst))
         {
             continue;
         }
 
-        filtered_cbs[i].cb(p, type);
+        if(!xQueueSend(filtered_srcs[i].q, (void*) &msg, 0))
+        {
+            printf("REPL MUX QUEUE FULL!!\n");
+        }
     }
 
     assert(xSemaphoreGive(lock) == pdTRUE);
@@ -97,7 +102,7 @@ uint8_t pkt_sniffer_is_running(void)
     return _pkt_sniffer_running;
 }
 
-esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_cb_t* f)
+esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_src_t* f)
 {
     if(!inited)
     {
@@ -106,7 +111,7 @@ esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_cb_t* f)
 
     if(!xSemaphoreTake(lock, 0))
     {
-        ESP_LOGE(TAG, "Timeout trying to add filter to cb list");
+        ESP_LOGE(TAG, "Timeout trying to add filter to list");
         return ESP_ERR_TIMEOUT;
     }
 
@@ -116,7 +121,7 @@ esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_cb_t* f)
         return ESP_ERR_NO_MEM;
     }
 
-    memcpy(&filtered_cbs[num_filters], f, sizeof(pkt_sniffer_filtered_cb_t));
+    memcpy(&filtered_srcs[num_filters], f, sizeof(pkt_sniffer_filtered_src_t));
     ++num_filters;
     assert(xSemaphoreGive(lock) == pdTRUE);
 
@@ -134,7 +139,7 @@ esp_err_t pkt_sniffer_clear_filter_list(void)
 
     if(!xSemaphoreTake(lock, 0))
     {
-        ESP_LOGE(TAG, "Timeout trying to add filter to cb list");
+        ESP_LOGE(TAG, "Timeout trying to add filter to list");
         return ESP_ERR_TIMEOUT;
     }
     

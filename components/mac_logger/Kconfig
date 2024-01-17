@@ -13,4 +13,16 @@ menu "MAC LOGGER CONFIG"
         int "Time to wait in MS for lock"
         default 10
 
+    config MAC_LOGGER_Q_SIZE
+        int "Number of packets allowed on in queue"
+        default 16
+
+    config MAC_LOGGER_STACK_SIZE
+        int "Mac logger task stack size"
+        default 4096
+
+    config MAC_LOGGER_CONSUMER_PRIO
+        int "Mac logger task prio"
+        default 10
+        
 endmenu

@@ -9,9 +9,11 @@
 #include "esp_log.h"
 
 static SemaphoreHandle_t lock;
+static QueueHandle_t q;
 static ap_t ap_list[CONFIG_MAC_LOGGER_MAX_APS] = { 0 };
 static uint8_t ap_list_len = 0;
 static uint8_t one_time_init_done = 0;
+static uint8_t running = 0;
 
 static const char* TAG = "MAC LOGGER";
 
@@ -423,36 +425,56 @@ void parse_eapol_pkt(uint8_t eapol_index, uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctr
     return;
 }
 
-void mac_logger_cb(wifi_promiscuous_pkt_t* p, 
-                   wifi_promiscuous_pkt_type_t type)
+void mac_logger_task(void* args)
 {
-    if(type == WIFI_PKT_DATA)
+    pkt_sniffer_msg_t msg;
+
+    ESP_LOGI(TAG, "Task starting");
+    while(running)
     {
-        int8_t eapol_index = get_eapol_index(p->payload, &(p->rx_ctrl));
-        if(eapol_index != -1)
+        if(xQueueReceive(q, &msg, portMAX_DELAY))
         {
-            parse_eapol_pkt(eapol_index + 2, p->payload, &(p->rx_ctrl));
-        }
-        else
-        {
-            parse_data_pkt(p->payload, &(p->rx_ctrl));   
+            if(!running)
+            {
+                break;
+            }
+
+            wifi_promiscuous_pkt_t* p = msg.p;
+            wifi_promiscuous_pkt_type_t type = msg.type;
+
+
+            if(type == WIFI_PKT_DATA)
+            {
+                int8_t eapol_index = get_eapol_index(p->payload, &(p->rx_ctrl));
+                if(eapol_index != -1)
+                {
+                    parse_eapol_pkt(eapol_index + 2, p->payload, &(p->rx_ctrl));
+                }
+                else
+                {
+                    parse_data_pkt(p->payload, &(p->rx_ctrl));   
+                }
+            }
+            else if(type == WIFI_PKT_MGMT)
+            {
+                if(is_beacon(p->payload) || is_probe(p->payload))
+                {
+                    parse_beacon_pkt(p->payload, &(p->rx_ctrl));
+                }
+                else if(is_assoc_req(p->payload))
+                {
+                    parse_eapol_pkt(0, p->payload, &(p->rx_ctrl));
+                }
+                else if(is_assoc_res(p->payload))
+                {
+                    parse_eapol_pkt(1, p->payload, &(p->rx_ctrl));
+                }
+            }
         }
     }
-    else if(type == WIFI_PKT_MGMT)
-    {
-        if(is_beacon(p->payload) || is_probe(p->payload))
-        {
-            parse_beacon_pkt(p->payload, &(p->rx_ctrl));
-        }
-        else if(is_assoc_req(p->payload))
-        {
-            parse_eapol_pkt(0, p->payload, &(p->rx_ctrl));
-        }
-        else if(is_assoc_res(p->payload))
-        {
-            parse_eapol_pkt(1, p->payload, &(p->rx_ctrl));
-        }
-    }
+
+    ESP_LOGI(TAG, "Task ending");
+    vTaskDelete(NULL);
 }
 
 //*****************************************************************************
@@ -523,23 +545,52 @@ esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta)
     return ESP_OK;
 }
 
-esp_err_t mac_logger_init(uint8_t* ap_mac)
+esp_err_t mac_logger_launch(uint8_t* ap_mac)
 {
-    pkt_sniffer_filtered_cb_t f = {0};
-    f.cb = mac_logger_cb;
-
-    if(ap_mac != NULL)
-    {
-        f.ap_active = 1;
-        memcpy(f.ap, ap_mac, 6);
-    }
-
     if(!one_time_init_done)
     {
         lock = xSemaphoreCreateBinary();
         assert(xSemaphoreGive(lock) == pdTRUE);
         one_time_init_done = 1;
         ESP_LOGI(TAG, "lock inited");
+
+        q = xQueueCreate(CONFIG_MAC_LOGGER_Q_SIZE, sizeof(pkt_sniffer_msg_t));
+        if(q == 0)
+        {
+            ESP_LOGE(TAG, "Failed to create q");
+            return ESP_ERR_NO_MEM;
+        }
+        ESP_LOGI(TAG, "Q created");
+    }
+
+    if(running)
+    {
+        ESP_LOGE(TAG, "already running");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    running = 1;
+    TaskHandle_t h;
+    xTaskCreate(mac_logger_task,
+                "Mac Logger Task", 
+                CONFIG_MAC_LOGGER_STACK_SIZE, 
+                NULL, 
+                CONFIG_MAC_LOGGER_CONSUMER_PRIO,
+                &h);
+    if(!h)
+    {
+        ESP_LOGE(TAG, "Failed to launch task");
+        running = 0;
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    pkt_sniffer_filtered_src_t f = {0};
+    f.q = q;
+
+    if(ap_mac != NULL)
+    {
+        f.ap_active = 1;
+        memcpy(f.ap, ap_mac, 6);
     }
 
     esp_err_t e = pkt_sniffer_add_filter(&f);
@@ -554,6 +605,18 @@ esp_err_t mac_logger_clear(void)
     clear_ap_list();
 
     ESP_LOGI(TAG, "Cleared Lists");
+    _release_lock();
+    return ESP_OK;
+}
+
+esp_err_t mac_logger_kill(void)
+{
+    if(_take_lock()){ return ESP_ERR_INVALID_STATE; }
+
+    pkt_sniffer_msg_t msg = {0};
+    running = 0;
+    xQueueSend(q, (void*) &msg, 0);
+
     _release_lock();
     return ESP_OK;
 }
