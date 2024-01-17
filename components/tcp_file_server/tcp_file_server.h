@@ -92,7 +92,20 @@
 //
 //                  CRC [c0, c1, c2, c3]
 //   <-----------------------------------------------
-//                                  
+//
+// Messages)
+//     - Alive     : One byte with 0 as its data
+//     - N file    : One byte with Number of files server is presenting
+//     - File Path : File path index of each file followed by exactly 32 bytes
+//                   containing the full file path, padded with NULL chars to 
+//                   fill up 32 byte. Note could have 32 bytes of all data and
+//                   no NULL char. Note index is only valid for one transaction
+//                   i.e. Alive -> CRC. 33 bytes always.
+//    - File i     : One byte with file index.
+//    - File Data  : Always 256 bytes of file data, last message padded with 0s 
+//                   fit in ull 256 bytes.
+//    - CRC        : 32 bit CRC. Lower bytes first. Always 4 bytes long. CRC
+//                   taken over all file data messages, including the 0 pads.                                
 //*****************************************************************************
 
 #pragma once

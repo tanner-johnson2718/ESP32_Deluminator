@@ -55,10 +55,10 @@ Publishers registers hooks with the with the ESP API i.e. a call back to be call
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
 | --------------- | --- | --- | --- | --- | --- | --- | --- |
-| mac logger      |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| mac logger      |  X  |  X  |     |  X  |  X  |  X  |     |
 | pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| tcp_file_server |  X  |  X  |     |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  |     |
 | repl_mux        |  X  |  X  |  X  |  X  |  X  |  X  |     |
 
 ## JTAG and running GDB
@@ -92,10 +92,10 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * [Rotary encoder](https://www.amazon.com/dp/B07F26CT6B?psc=1&ref=ppx_yo2ov_dt_b_product_details)
 
 ## TODO
-* tcp file server queue based
-* The way we save eapol keys and the way the way the tcp server work is jank
-* Finish the table below
-    * DOC
+* TCP server new proto
+* Mac Logger DOC
+    * More on pkt structure
+    * More on Assoc and Auth and Deauth pkts 
 * look into exactly what is happining when we crack
     * maybe make a python script for that
     * Only store pertinent eapol info
@@ -104,9 +104,9 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * Check if a network has PMF
     * RSN capabilitiesS
 * Memory and Perfomance Analysis
-* enumeration of tasks, files, and memory
 * Finish readme
     * show typical attack flow
     * Full system map?
 * implement help_net
 * implement delayed launch
+* pkt sniffer always looks for MGMT and data
