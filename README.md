@@ -103,8 +103,6 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * IP Logger
 * Check if a network has PMF
     * RSN capabilitiesS
-* power analysis
-* Make AP hidden
 * Memory and Perfomance Analysis
 * enumeration of tasks, files, and memory
 * Finish readme

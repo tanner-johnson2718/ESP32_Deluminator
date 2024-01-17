@@ -16,8 +16,8 @@
 //                    and have serveral services processing pkts they are
 //                    intersted in.
 //    * MAC Logger - Sits on top of PKT Sniffer and logs all STAs, APs, and
-//                   their association.
-//    * EAPOL Logger - Listens for WPA2 handshakes and dumps them to disk
+//                   their association. Will listen for WPA2 handshakes and
+//                   dump them to disk
 //    * WSL Bypasser - Got from homie online (see component for details). 
 //                     Allows us to send deauth pkts posing as a differnt AP
 //    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
@@ -130,7 +130,6 @@ static int do_dump_wifi_stats(int argc, char** argv);
 static int do_send_deauth(int, char**);
 static int do_mac_logger_init(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
-static int do_pkt_sniffer_add_filter(int argc, char** argv);
 static int do_pkt_sniffer_launch(int argc, char** argv);
 static int do_pkt_sniffer_kill(int argc, char** argv);
 static int do_pkt_sniffer_clear(int argc, char** argv);
@@ -179,7 +178,6 @@ void app_main(void)
     register_no_arg_cmd("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
-    register_no_arg_cmd("pkt_sniffer_add_filter", "Add a filter to the pkt sniffer", &do_pkt_sniffer_add_filter);
     register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
     register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
@@ -419,102 +417,6 @@ static int do_mac_logger_dump(int argc, char** argv)
     
     
     return 0;
-}
-
-static inline uint8_t get_subtype(uint8_t* pkt)
-{
-    return (pkt[0] >> 4) & 0x0F;
-}
-
-static void _cb(wifi_promiscuous_pkt_t* p, 
-                wifi_promiscuous_pkt_type_t type)
-{
-
-    esp_log_write(ESP_LOG_INFO, "","TYPE=");
-    switch(type)
-    {
-        case WIFI_PKT_MGMT:
-            esp_log_write(ESP_LOG_INFO, "","Man ");
-            break;
-        case WIFI_PKT_CTRL:
-            esp_log_write(ESP_LOG_INFO, "","Ctl ");
-            break;
-        case WIFI_PKT_DATA:
-            esp_log_write(ESP_LOG_INFO, "","Dat ");
-            break;
-        case WIFI_PKT_MISC:
-            esp_log_write(ESP_LOG_INFO, "","Mis ");
-            break;
-        default:
-            break;
-    }
-
-    esp_log_write(ESP_LOG_INFO, "","STYPE=%d ", get_subtype(p->payload));
-
-    uint8_t* dst = p->payload + 4;
-    uint8_t* src = p->payload + 10;
-    uint8_t* ap =  p->payload + 16;
-
-    esp_log_write(ESP_LOG_INFO, "","DST="MACSTR" SRC="MACSTR" AP="MACSTR"\n", MAC2STR(dst),
-                                                      MAC2STR(src),
-                                                      MAC2STR(ap));
-
-}
-
-// 0 sucesses parse, 1 on sscanf fail
-static int sscanf_helper(uint8_t* mac, char* s)
-{
-    uint8_t ret = sscanf(s, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", 
-                        &mac[0],
-                        &mac[1],
-                        &mac[2],
-                        &mac[3],
-                        &mac[4],
-                        &mac[5]
-    );
-
-
-    if(ret != 6)
-    {
-        esp_log_write(ESP_LOG_INFO, "","Failed to parse AP MAC: %s\n", s);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int do_pkt_sniffer_add_filter(int argc, char** argv)
-{
-    if(argc != 4)
-    {
-        esp_log_write(ESP_LOG_INFO, "","Usage: pkt_sniffer_add_filter <AP MAC or NULL> <DST MAC or NULL> <SRC MAC or NULL>");
-        return 1;
-    }
-
-    pkt_sniffer_filtered_cb_t filt_cb = {0};
-    if(strcmp(argv[1], "NULL") != 0)
-    {
-        filt_cb.ap_active = 1;
-        if(sscanf_helper(filt_cb.ap, argv[1])) {return 1;}
-    }
-
-    if(strcmp(argv[2], "NULL") != 0)
-    {
-        filt_cb.dst_active = 1;
-        if(sscanf_helper(filt_cb.dst, argv[2])) {return 1;}
-    }
-
-    if(strcmp(argv[3], "NULL") != 0)
-    {
-        filt_cb.src_active = 1;
-        if(sscanf_helper(filt_cb.src, argv[3])) {return 1;}
-    }
-
-    filt_cb.cb = _cb;
-    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_add_filter(&filt_cb));
-
-    return 0;
-
 }
 
 static int do_pkt_sniffer_launch(int argc, char** argv)

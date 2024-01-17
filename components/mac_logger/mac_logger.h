@@ -3,8 +3,8 @@
 #include "esp_err.h"
 #include "pkt_sniffer.h"
 
-// Goal of the component is to fill in this data structure by sniffing inbound
-// packets:
+// Goal of the component is to fill in this data structure (or a subset of it) 
+// by sniffing inbound packets:
 
 // AP)
 //    - SSID

@@ -336,7 +336,10 @@ void parse_beacon_pkt(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
 
     if(index < 0)
     {   
-        create_ap((char*)(p + 0x26), p[0x25], p+16, rx_ctrl->channel, rx_ctrl->rssi);
+        if(p[0x25] > 0)
+        {
+            create_ap((char*)(p + 0x26), p[0x25], p+16, rx_ctrl->channel, rx_ctrl->rssi);
+        }    
     }
     else
     {
@@ -395,7 +398,8 @@ void parse_eapol_pkt(uint8_t eapol_index, uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctr
 
     if(ap_list[ap_index].eapol_pkt_lens[eapol_index] != 0)
     {
-        ESP_LOGE(TAG, "Possibly recved duplicate eapol pkt");
+        ESP_LOGE(TAG, "Possibly recved duplicate eapol pkt: %d", eapol_index);
+        _release_lock();
         return;
     }
 
