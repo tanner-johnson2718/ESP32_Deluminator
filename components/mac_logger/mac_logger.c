@@ -401,8 +401,6 @@ void parse_eapol_pkt(uint8_t eapol_index, uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctr
     if(ap_list[ap_index].eapol_pkt_lens[eapol_index] != 0)
     {
         ESP_LOGE(TAG, "Possibly recved duplicate eapol pkt: %d", eapol_index);
-        _release_lock();
-        return;
     }
 
     memcpy(ap_list[ap_index].eapol_buffer + (eapol_index*EAPOL_MAX_PKT_LEN), p, rx_ctrl->sig_len);

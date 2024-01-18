@@ -108,7 +108,7 @@ struct ap
     uint8_t channel;
     int8_t rssi;
     uint8_t eapol_written_out;
-    uint8_t eapol_pkt_lens[EAPOL_NUM_PKTS];
+    uint16_t eapol_pkt_lens[EAPOL_NUM_PKTS];
     uint8_t eapol_buffer[EAPOL_MAX_PKT_LEN * EAPOL_NUM_PKTS];
     uint8_t num_assoc_stas;
     sta_t stas[CONFIG_MAC_LOGGER_MAX_STAS];

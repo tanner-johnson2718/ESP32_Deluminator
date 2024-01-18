@@ -35,34 +35,9 @@ static uint8_t file_to_send = 0;
 // to reset client socket connection 0 good.
 //*****************************************************************************
 
-static uint8_t send_alive()
-{
-    uint8_t x = 0;
-
-    if(send(client_socket, &x, 1, 0) != 1)
-    {
-        return 1;
-    }
-
-    return 0;
-}
-
-static uint8_t get_alive()
-{
-    uint8_t x;
-
-    size_t num_recv = recv(client_socket, &x, 1, MSG_DONTWAIT);
-    if(num_recv != 1 || x != 0)
-    {
-        return 1;
-    }
-
-    return 0;
-}
-
 static uint8_t send_N()
 {
-    ESP_LOGI(TAG, "send_N  N=%d", num_paths);
+    // ESP_LOGI(TAG, "send_N  N=%d", num_paths);
     if(send(client_socket, &num_paths, 1, 0) != 1)
     {
         return 1;
@@ -90,7 +65,7 @@ static uint8_t send_indexed_path(uint8_t i)
     uint8_t len = strlen(path_index + i*(MAX_PATH_LEN+1));
     memcpy(buff + 1, path_index + i*(MAX_PATH_LEN+1), len);
 
-    if(send(client_socket, buff, 33, 0) != MAX_PATH_LEN)
+    if(send(client_socket, buff, 33, 0) != 33)
     {
         return 1;
     }
@@ -174,6 +149,7 @@ static uint8_t index_files(void)
                       MOUNT_PATH, 
                       dir->d_name );
             ++num_paths;
+            // ESP_LOGI(TAG, "Indexed file %s", path_index + (num_paths-1)*(MAX_PATH_LEN+1));
             if(num_paths == MAX_FILES)
             {
                 num_paths = 0;
@@ -248,35 +224,23 @@ static void client_handler_task(void* args)
     {
         if( accept_client_connection() ) {continue;}
 
-        while(running)
-        {
-            // Wait for alive response
-            if(send_alive()){ break; }
-            if(get_alive())
-            {
-                vTaskDelay(1000 / portTICK_PERIOD_MS);
-                continue;
-            }
 
-            ESP_LOGI(TAG, "Client Responed - Indexing Files");
+        if( index_files() ) { goto cleanup; }
+        if( send_N() )      { goto cleanup; }
+        if( get_N()  )      { goto cleanup; }
 
-            if( index_files() ) { break; }
-            if( send_N() )      { break; }
-            if( get_N()  )      { break; }
+        ESP_LOGI(TAG, "Files Indexed, Client Synced - Presenting Files");
 
-            ESP_LOGI(TAG, "Files Indexed - Presenting Files");
+        if( send_file_paths() )               { goto cleanup; }
+        if( get_file_index()  )               { goto cleanup; }
+        if( send_indexed_path(file_to_send) ) { goto cleanup; }
+            
+        ESP_LOGI(TAG, "(%d) %s requested ... sending", file_to_send, path_index + file_to_send*(MAX_PATH_LEN+1));
 
-            if( send_file_paths() )               { break; }
-            if( get_file_index()  )               { break; }
-            if( send_indexed_path(file_to_send) ) { break; }
-
-            ESP_LOGI(TAG, "(%d) %s requested ... sending", file_to_send, path_index + file_to_send*(MAX_PATH_LEN+1));
-
-            send_data();
-
-        }
+        send_data();
 
         // Clean up sesion resources
+        cleanup:
         ESP_LOGI(TAG, "Client Connection Reset");
         shutdown(client_socket, 0);
         close(client_socket);

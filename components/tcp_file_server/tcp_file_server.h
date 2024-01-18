@@ -54,10 +54,6 @@
 // Comms Protocol After Client Socket Established)
 //  
 //  SERVER             Alive [0] (1sec loop)      CLIENT
-//    --------------------------------------------->
-//
-//                     Alive [0]
-//   <----------------------------------------------
 //
 //                    N Files [N]
 //   ---------------------------------------------->
@@ -87,9 +83,10 @@
 //            File Data [d_0, ... , d_n-1]
 //   ------------------------------------------------>
 //
+//                        Close
+//    ----------------------------------------------->
+//
 // Messages)
-//     - Alive     : One byte with 0 as its data
-//     - N file    : One byte with Number of files server is presenting
 //     - File Path : File path index of each file followed by exactly 32 bytes
 //                   containing the full file path, padded with NULL chars to 
 //                   fill up 32 byte. Note could have 32 bytes of all data and
