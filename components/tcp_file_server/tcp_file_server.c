@@ -26,10 +26,13 @@ static int listen_sock;
 static char ip_addr[16];
 static int running = 0;
 static char MOUNT_PATH[MAX_PATH_LEN + 1];
-static char path_index[MAX_FILES * ()]
+static char path_index[MAX_FILES * (MAX_PATH_LEN+1)];
+static uint8_t num_paths = 0;
+static uint8_t file_to_send = 0;
 
 //*****************************************************************************
-// TCP Server Logic
+// TCP File Server Comm Protocol helpers. Return values are 1 if bad and need
+// to reset client socket connection 0 good.
 //*****************************************************************************
 
 static uint8_t send_alive()
@@ -49,7 +52,7 @@ static uint8_t get_alive()
     uint8_t x;
 
     size_t num_recv = recv(client_socket, &x, 1, MSG_DONTWAIT);
-    if(num_recv == 1)
+    if(num_recv != 1 || x != 0)
     {
         return 1;
     }
@@ -57,58 +60,71 @@ static uint8_t get_alive()
     return 0;
 }
 
+static uint8_t send_N()
+{
+    if(send(client_socket, &num_paths, 1, 0) != 1)
+    {
+        return 1;
+    }
+
+    return 0;    
+}
+
+static uint8_t get_N()
+{
+    uint8_t x;
+    size_t num_recv = recv(client_socket, &x, 1, 0);
+    if(num_recv != 1 || x != num_paths)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+static uint8_t send_indexed_path(uint8_t i)
+{
+    uint8_t buff[33] = 0;
+    buff[0] = i;
+    uint8_t len = strlen(path_index + i*(MAX_PATH_LEN+1));
+    memcpy(buff + 1, path_index + i*(MAX_PATH_LEN+1), len);
+
+    if(send(client_socket, buff, 33, 0) != MAX_PATH_LEN)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+static uint8_t send_file_paths()
+{
+    uint8_t i;
+    for(i = 0; i < num_paths; ++i)
+    {
+        if(send_indexed_path(i)){ return 1; }
+    }
+
+    return 0;
+}
+
+static uint8_t get_file_index()
+{
+    uint8_t i;
+    uint8_t num_recv = recv(client_socket, &i, 1, 0);
+    if(num_recv != 1 || i >= num_paths)
+    {
+        file_to_send = 0;
+        return 1;
+    }
+
+    file_to_send = i;
+    return 0;
+}
+
 // returns a 1 if the error caused should reset the tcp connection
 static uint8_t handle_file_req(void)
 {
-    uint8_t rx_buffer[33];
-    int len = recv(client_socket, rx_buffer, sizeof(rx_buffer) - 1, 0);
-    
-    if(len < 0)
-    {
-        ESP_LOGE(TAG, "In handle_file_req - error recv");
-        return 1;
-    }
-    else if(len == 0)
-    {
-        ESP_LOGI(TAG, "In handle_file_req - session closed");
-        return 1;
-    }
-    
-    rx_buffer[len] = 0;
-    if((char) rx_buffer[len-1] == '\n')
-    {
-        rx_buffer[len-1] = 0;
-    }
-
-    DIR *d;
-    struct dirent *dir;
-
-    d = opendir(MOUNT_PATH);
-    if(d)
-    {
-        while((dir = readdir(d))!=NULL)
-        {
-            if(strcmp(dir->d_name, (char*) rx_buffer) == 0)
-            {
-                break;
-            }
-        }
-
-        closedir(d);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
-        return 0;
-    }
-
-    if(dir == NULL)
-    {
-        ESP_LOGE(TAG, "In handle_file_req - requested non existent file %s", rx_buffer);
-        return 0;
-    }
-
-    // Send file
     ESP_LOGI(TAG, "File %s requested", rx_buffer);
     uint8_t tx_buffer[256];
     char path[33];
@@ -144,50 +160,40 @@ static uint8_t handle_file_req(void)
 }
 
 // Returns a 1 if the error caused should reset the tcp connection
-static uint8_t present_files(void)
+static uint8_t index_files(void)
 {
     DIR *d;
     struct dirent *dir;
+    num_paths = 0;
 
     d = opendir(MOUNT_PATH);
     if(d)
     {
         while((dir = readdir(d))!=NULL)
         {
-            uint8_t len = strlen(dir->d_name);
-            int written =send(client_socket, dir->d_name, len, 0);
-            if(written < 0)
+            sprintf( path_index +num_paths*(MAX_PATH_LEN+1),  
+                      "%s/%s", 
+                      MOUNT_PATH, 
+                      dir->d_name );
+            ++num_paths;
+            if(num_paths == MAX_FILES)
             {
-                ESP_LOGE(TAG, "In present Files - send error");
+                num_paths = 0;
                 return 1;
             }
-            
-
-            written = send(client_socket, "\n", 1, 0);
-            if(written < 0)
-            {
-                ESP_LOGE(TAG, "In present Files - send error");
-                return 1;
-            }
-
-            ESP_LOGI(TAG, "Successfully Presented file %s", dir->d_name);
         }
         closedir(d);
     }
     else
     {
-        ESP_LOGE(TAG, "In present_files - failed to open %s", MOUNT_PATH);
         return 1;
     }
 
     return 0;
 }
 
-// Init the listening socket, bind it to our static IP and port
-static void client_handler_task(void* args)
+static void create_listening_socket()
 {
-    running = 1;
-
     listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if(listen_sock < 0)
     {
@@ -214,55 +220,61 @@ static void client_handler_task(void* args)
     }
 
     ESP_LOGI(TAG, "Listening socket bound to %s:%d", CONFIG_TCP_SERVER_IP, CONFIG_TCP_SERVER_PORT);
+}
 
+static uint8_t accept_client_connection(void)
+{
+    struct sockaddr_in source_addr;
+    socklen_t addr_len = sizeof(source_addr);
+
+    client_socket = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
+    if (client_socket < 0) {
+        ESP_LOGE(TAG, "Unable to accept connection: %s", strerror(errno));
+        return 1;
+    }
+
+    inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, ip_addr, 16);
+    ESP_LOGI(TAG, "Client Connected %s - Starting Session", ip_addr);
+    return 0;
+}
+
+// Init the listening socket, bind it to our static IP and port
+static void client_handler_task(void* args)
+{
+    running = 1;
+
+    create_listening_socket();
+    
     while(running)
     {
-        struct sockaddr_in source_addr;
-        socklen_t addr_len = sizeof(source_addr);
-
-        client_socket = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-        if (client_socket < 0) {
-            ESP_LOGE(TAG, "Unable to accept connection: %s", strerror(errno));
-            continue;
-        }
-
-        inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, ip_addr, 16);
-        ESP_LOGI(TAG, "Client Connected %s - Starting Session", ip_addr);
+        if( accept_client_connection() ) {continue;}
 
         while(running)
         {
             // Wait for alive response
             if(send_alive()){ break; }
-            if(!get_alive())
+            if(get_alive())
             {
                 vTaskDelay(1000 / portTICK_PERIOD_MS);
                 continue;
             }
 
-            // Index Files
+            ESP_LOGI(TAG, "Client Responed - Indexing Files");
 
-            // Sent N
+            if( index_files() ) { break; }
+            if( send_N() )      { break; }
+            if( get_n()  )      { break; }
 
-            // Get N
+            ESP_LOGI(TAG, "Files Indexed - Presenting Files");
 
-            // Send File Paths
+            if( send_file_paths() )               { break; }
+            if( get_file_index()  )               { break; }
+            if( send_indexed_path(file_to_send) ) { break; }
 
-            // Get File index
+            ESP_LOGI(TAG, "(%d) %s requested ... sending", file_to_send, path_index + file_to_send*(MAX_PATH_LEN+1));
 
-            // Sent file path
+            send
 
-            // Send file data
-
-            // Send CRC 
-            if(present_files())
-            {
-                break;
-            }
-
-            if(handle_file_req())   // Generally block here
-            {
-                break;
-            }
         }
 
         // Clean up sesion resources
