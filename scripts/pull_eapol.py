@@ -14,28 +14,37 @@ print(("192.168.4.1", 420))
 print()
 
 files = []
+indexs = []
+data = sock.recv(1)
+sock.send(bytes([0]))
+while data[0] == 0:
+    data = sock.recv(1)
+n_files = data[0]
+print("n = " + str(n_files))
+sock.send(bytes([n_files]))
+for i in range(0, n_files):
+    data = sock.recv(33)
+    index = data[0]
+    path = data[1:]
 
-while 1:
-    ready = select.select([sock], [], [], 3)
-    if ready[0]:
-        data = sock.recv(33)
-
-        if b'.pkt' in data:
-            files.append(data)
-    else:
-        break
+    if b'.pkt' in path:
+        files.append(path)
+        indexs.append(index)
 
 
 print("Packet Dumps Found from server: ")
 print(files)
 print()
 
+files = [files[0]]
+
 for bstr in files:
     _bstr = bstr.decode('ascii').strip('\n').encode('ascii')
     data = b''
     
     print("Requesing: " + str(_bstr))
-    sock.send(_bstr)
+    sock.send(bytes([indexs[0]]))
+    print("Server Sending " + str(sock.recv(33)[1:]))
 
     l = 256
     while 1:

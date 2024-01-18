@@ -84,7 +84,7 @@
 //
 //                         ....
 //
-//            File Data [d_0, ... , d_255]
+//            File Data [d_0, ... , d_n-1]
 //   ------------------------------------------------>
 //
 // Messages)
@@ -96,8 +96,8 @@
 //                   no NULL char. Note index is only valid for one transaction
 //                   i.e. Alive -> CRC. 33 bytes always.
 //    - File i     : One byte with file index.
-//    - File Data  : Always 256 bytes of file data, last message padded with 0s 
-//                   fit in ull 256 bytes.                               
+//    - File Data  : 256 bytes of file data, up until last message which could 
+//                   be 1 to 256 bytes.                        
 //*****************************************************************************
 
 #pragma once

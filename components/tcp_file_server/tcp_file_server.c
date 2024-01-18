@@ -62,6 +62,7 @@ static uint8_t get_alive()
 
 static uint8_t send_N()
 {
+    ESP_LOGI(TAG, "send_N  N=%d", num_paths);
     if(send(client_socket, &num_paths, 1, 0) != 1)
     {
         return 1;
@@ -84,7 +85,7 @@ static uint8_t get_N()
 
 static uint8_t send_indexed_path(uint8_t i)
 {
-    uint8_t buff[33] = 0;
+    uint8_t buff[33] = {0};
     buff[0] = i;
     uint8_t len = strlen(path_index + i*(MAX_PATH_LEN+1));
     memcpy(buff + 1, path_index + i*(MAX_PATH_LEN+1), len);
@@ -123,18 +124,16 @@ static uint8_t get_file_index()
 }
 
 // returns a 1 if the error caused should reset the tcp connection
-static uint8_t handle_file_req(void)
+static void send_data(void)
 {
-    ESP_LOGI(TAG, "File %s requested", rx_buffer);
     uint8_t tx_buffer[256];
     char path[33];
-    snprintf(path,32, "%.8s/%.22s", MOUNT_PATH, rx_buffer);
-    FILE* f = fopen(path, "r");
+    FILE* f = fopen(path_index+file_to_send*(MAX_PATH_LEN+1), "r");
 
     if(!f)
     {
-        ESP_LOGE(TAG, "In handle_file_req - Failed to open %s", path);
-        return 0;
+        ESP_LOGE(TAG, "In send_data - Failed to open %s", path);
+        return;
     }
 
     size_t num_read = 0;
@@ -156,7 +155,6 @@ static uint8_t handle_file_req(void)
     }
 
     fclose(f);
-    return 0;
 }
 
 // Returns a 1 if the error caused should reset the tcp connection
@@ -192,13 +190,13 @@ static uint8_t index_files(void)
     return 0;
 }
 
-static void create_listening_socket()
+static uint8_t create_listening_socket()
 {
     listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if(listen_sock < 0)
     {
         ESP_LOGE(TAG, "Failed to open listening socket");
-        goto clean_up0;
+        return 1;
     }
 
     int opt = 1;
@@ -216,10 +214,11 @@ static void create_listening_socket()
     if(err)
     {
         ESP_LOGE(TAG, "Failed to bind listening socket");
-        goto clean_up0;
+        return 1;
     }
 
     ESP_LOGI(TAG, "Listening socket bound to %s:%d", CONFIG_TCP_SERVER_IP, CONFIG_TCP_SERVER_PORT);
+    return 0;
 }
 
 static uint8_t accept_client_connection(void)
@@ -243,7 +242,7 @@ static void client_handler_task(void* args)
 {
     running = 1;
 
-    create_listening_socket();
+    if(create_listening_socket()) {running = 0;}
     
     while(running)
     {
@@ -263,7 +262,7 @@ static void client_handler_task(void* args)
 
             if( index_files() ) { break; }
             if( send_N() )      { break; }
-            if( get_n()  )      { break; }
+            if( get_N()  )      { break; }
 
             ESP_LOGI(TAG, "Files Indexed - Presenting Files");
 
@@ -273,11 +272,12 @@ static void client_handler_task(void* args)
 
             ESP_LOGI(TAG, "(%d) %s requested ... sending", file_to_send, path_index + file_to_send*(MAX_PATH_LEN+1));
 
-            send
+            send_data();
 
         }
 
         // Clean up sesion resources
+        ESP_LOGI(TAG, "Client Connection Reset");
         shutdown(client_socket, 0);
         close(client_socket);
     }
@@ -285,7 +285,6 @@ static void client_handler_task(void* args)
     // Clean up listening socket resources including this task. We force the
     // client to disconnect from the Soc AP here (if it that isnt what caused)
     // us to get here.
-clean_up0:
     running = 0;
     close(listen_sock);
     ESP_LOGI(TAG, "TCP File Server Task Exiting ...");

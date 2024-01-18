@@ -1,5 +1,6 @@
 // TODO)
 //    * Better doc on pkt structure, wifi connection flow, etc
+//    * kill and clear
 
 #pragma once
 #include <stdint.h>
