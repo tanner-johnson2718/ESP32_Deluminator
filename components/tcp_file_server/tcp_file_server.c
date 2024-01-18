@@ -16,16 +16,46 @@
 
 static const char* TAG = "TCP File Server";
 
+
+#define MAX_FILES 32
+#define MAX_PATH_LEN 32
+
 static TaskHandle_t handler_task;
 static int client_socket;
 static int listen_sock;
 static char ip_addr[16];
 static int running = 0;
-static char MOUNT_PATH[33];
+static char MOUNT_PATH[MAX_PATH_LEN + 1];
+static char path_index[MAX_FILES * ()]
 
 //*****************************************************************************
 // TCP Server Logic
 //*****************************************************************************
+
+static uint8_t send_alive()
+{
+    uint8_t x = 0;
+
+    if(send(client_socket, &x, 1, 0) != 1)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+static uint8_t get_alive()
+{
+    uint8_t x;
+
+    size_t num_recv = recv(client_socket, &x, 1, MSG_DONTWAIT);
+    if(num_recv == 1)
+    {
+        return 1;
+    }
+
+    return 0;
+}
 
 // returns a 1 if the error caused should reset the tcp connection
 static uint8_t handle_file_req(void)
@@ -201,6 +231,29 @@ static void client_handler_task(void* args)
 
         while(running)
         {
+            // Wait for alive response
+            if(send_alive()){ break; }
+            if(!get_alive())
+            {
+                vTaskDelay(1000 / portTICK_PERIOD_MS);
+                continue;
+            }
+
+            // Index Files
+
+            // Sent N
+
+            // Get N
+
+            // Send File Paths
+
+            // Get File index
+
+            // Sent file path
+
+            // Send file data
+
+            // Send CRC 
             if(present_files())
             {
                 break;

@@ -1,3 +1,6 @@
+// TODO
+//   * Make it always filter on MGT and DATA
+
 // Packet Sniffer. The base esp32 promicious cb system only allows for
 // filtering on packet type and some sub types. We add an extra layer of 
 // filtering of promiscious packets with this component. 

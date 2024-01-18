@@ -1,3 +1,8 @@
+// TODO)
+//   * system map and better overview doc?
+//   * help_net
+//   * PKT sniffer delayed launch
+
 // This is the starting point for the esp32 deluminator. The main module here
 // inits all the important esp32 idf subsystems. These are)
 //

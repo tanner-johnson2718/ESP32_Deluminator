@@ -18,26 +18,14 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * The main interface for the system is the repl, which can be connected to via:
     * USB serial (`idf.py -p /dev/ttyUSB0 monitor`) OR
     * REPL TCP server (`nc 192.168.4.1 421`) (these settings can be changed in the menuconfig)
-* Through the repl one can interface, start, stop, and configure the main components.
+    * Through the repl one can interface, start, stop, and configure the main components.
 * Type `help` on the repl to see all possible commands
     * When using REPL TCP server type `help_net`
-* **NOTE** many of the components require putting the wifi driver in promiscious mode which if a client is connected will crash the system.
-    * When connecting to access point these will be automatically stoppped
-    * We have delayed launched functions that will launch these afte a delay so you can disconnect from the device.
+* Documentation can be found in `main.c` and in every components header file.
 
 ## Typical Attack Flow
 
-# Software and the ESP32 System
-
-The main software desgin is event driven and based on free RTOS queues. `main.c` inits all the important esp systems such as wifi, flash memory, etc. It also inits all our main components. Each component is well documented and has a well documented API. `main.c` has a current high level overview of the system and is a good place to start. Each component then exports an API that can be called via the repl commands registered in main. For each component refer to its header file for documentation.However, most components can be summarized with the following model: 
-
-```
-                   call             push     recv             call
-ESP API Call back -----> Publisher -----> Q ------> Consumer ------> ESP API
-
-```
-
-Publishers registers hooks with the with the ESP API i.e. a call back to be called when a packet hits the WIFI driver. Publishers do not usually have their own thread / task context, their functions are registered and called by esp system threads. Producers push events to RTOS queues which are waited on by consumers. Consumers get their own task. This allows us to priotize tasks based on importance of execution. Consumers usually then call into the ESP API either to log events or to write to disk or send a packet over the net, etc.
+# Software
 
 ## Coding Standards
 
@@ -93,20 +81,9 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 
 ## TODO
 * TCP server new proto
-* Mac Logger DOC
-    * More on pkt structure
-    * More on Assoc and Auth and Deauth pkts 
 * look into exactly what is happining when we crack
     * maybe make a python script for that
     * Only store pertinent eapol info
 * Turn wsl by passer into deauth agent
 * IP Logger
-* Check if a network has PMF
-    * RSN capabilitiesS
 * Memory and Perfomance Analysis
-* Finish readme
-    * show typical attack flow
-    * Full system map?
-* implement help_net
-* implement delayed launch
-* pkt sniffer always looks for MGMT and data
