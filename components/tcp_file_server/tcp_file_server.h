@@ -17,9 +17,9 @@
 // |-----------------|    |----------------------|    |---------------------|
 // | Fufil File Reqs |<---| Present Stored Files |<---|    Accept Conn      |
 // |-----------------|    |----------------------|    |---------------------|
-//          |                          ^                         ^ 
-//          |                          |                         |
-//          |---------------------------                         |
+//          |                                                    ^ 
+//          |                                                    |
+//          |                                                    |
 //          V                                                    |
 // |--------------------------|                                  |
 // | Handle Client Disconnect |----------------------------------- 
@@ -116,10 +116,4 @@ esp_err_t tcp_file_server_launch(char* mount_path);
 // Returns) ESP_OK if it is running else error
 //*****************************************************************************
 esp_err_t tcp_file_server_kill(void);
-
-//*****************************************************************************
-// REPL Test Driver Functions
-//*****************************************************************************
-int do_tcp_file_server_kill(int argc, char** argv);
-int do_tcp_file_server_launch(int argc, char** argv);
 

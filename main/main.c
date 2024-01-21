@@ -44,6 +44,7 @@
 #include "cmd_nvs.h"
 #include "heap_memory_layout.h"
 #include "esp_mac.h"
+#include "esp_wifi.h"
 
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
@@ -133,11 +134,16 @@ static int do_get_task(int argc, char** argv);
 static int do_dump_wifi_stats(int argc, char** argv);
 
 static int do_send_deauth(int, char**);
+
 static int do_mac_logger_launch(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
+
 static int do_pkt_sniffer_launch(int argc, char** argv);
 static int do_pkt_sniffer_kill(int argc, char** argv);
 static int do_pkt_sniffer_clear(int argc, char** argv);
+
+int do_tcp_file_server_kill(int argc, char** argv);
+int do_tcp_file_server_launch(int argc, char** argv);
 
 static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
 
@@ -390,7 +396,7 @@ static int do_send_deauth(int argc, char** argv)
 
 static int do_mac_logger_launch(int argc, char** argv)
 {
-    mac_logger_launch(NULL);
+    mac_logger_launch();
     return 0;
 }
 
@@ -432,12 +438,7 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
         return 1;
     }
 
-    wifi_promiscuous_filter_t filt = 
-    {
-        .filter_mask=WIFI_PROMIS_FILTER_MASK_ALL
-    };
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10), filt));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10)));
 
     return 0;
 }

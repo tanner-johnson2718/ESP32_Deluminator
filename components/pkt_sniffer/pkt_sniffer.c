@@ -18,68 +18,65 @@ static uint8_t _pkt_sniffer_running = 0;
 pkt_sniffer_filtered_src_t filtered_srcs[CONFIG_PKT_MAX_FILTERS];
 static SemaphoreHandle_t lock;
 
-//*****************************************************************************
-// First line CB code
-//*****************************************************************************
-
-static inline uint8_t mac_is_eq(uint8_t* m1, uint8_t* m2)
+int filter_match(uint8_t i, mgmt_header_t* hdr)
 {
-    uint8_t i = 0;
-    for(; i < 6; ++i)
+    uint8_t mask = (filtered_srcs[i].filter.type_bitmap);
+    if(!(((uint8_t)1 << (uint8_t) hdr->type) & mask))
     {
-        if(m1[i]!=m2[i])
-        {
-            return 0;
-        }
+        return 0;
+    }
+
+    uint16_t mask16;
+    if(hdr->type == PKT_MGMT)
+    {
+        mask16 = filtered_srcs[i].filter.mgmt_subtype_bitmap;
+    }
+    else if(hdr->type == PKT_DATA)
+    {
+        mask16 = filtered_srcs[i].filter.mgmt_subtype_bitmap;
+    }
+    else
+    {
+        return 0;
+    }
+
+    if(!(( (uint16_t) 1 << (uint8_t) hdr->sub_type)  & mask16 ))
+    {
+        return 0;
     }
 
     return 1;
 }
 
+//*****************************************************************************
+// First line CB code
+//*****************************************************************************
+
 static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
 {
-    pkt_sniffer_msg_t msg;
     wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*) buff;
-    msg.p = p;
-    msg.type = type;
 
-    if(p->rx_ctrl.rx_state != 0)
-    {
-        // ESP_LOGI(TAG, "malformed packet");
-        return;
-    }
+    if(p->rx_ctrl.rx_state != 0){ return; }
 
-    uint8_t* dst = p->payload + 4;
-    uint8_t* src = p->payload + 10;
-    uint8_t* ap =  p->payload + 16;
- 
     if(!xSemaphoreTake(lock, 0))
     {
         ESP_LOGE(TAG, "Timeout trying to parse packet");
         return;
     }
 
+    mgmt_header_t* hdr = (mgmt_header_t*) buff;
+
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
     {
-        if(filtered_srcs[i].ap_active &&  !mac_is_eq(ap, filtered_srcs[i].ap))
+        if(filter_match(i, hdr))
         {
-            continue;
-        }
-
-        if(filtered_srcs[i].src_active &&  !mac_is_eq(src, filtered_srcs[i].src))
-        {
-            continue;
-        }
-
-        if(filtered_srcs[i].dst_active &&  !mac_is_eq(dst, filtered_srcs[i].dst))
-        {
-            continue;
-        }
-
-        if(!xQueueSend(filtered_srcs[i].q, (void*) &msg, 0))
-        {
-            printf("REPL MUX QUEUE FULL!!\n");
+            pkt_subtype_t x;
+            x.mgmt_subtype = hdr->sub_type;
+            filtered_srcs[i].cb((void*)p->payload,
+                                (void*) &(p->rx_ctrl), 
+                                (pkt_type_t) hdr->type, 
+                                x);            
         }
     }
 
@@ -100,6 +97,57 @@ void _pkt_sniffer_init(void)
 uint8_t pkt_sniffer_is_running(void)
 {
     return _pkt_sniffer_running;
+}
+
+esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f, 
+                                       pkt_type_t type, 
+                                       pkt_subtype_t subtype)
+{
+    if((uint8_t) type > 16 || (uint8_t) subtype.mgmt_subtype > 16)
+    {
+        ESP_LOGE(TAG, "In pkt_sniffer_add_type_subtype type or sub type invalid");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    
+    if(type == PKT_MGMT || type == PKT_ANY)
+    {
+        if(subtype.mgmt_subtype == PKT_MGMT_ANY)
+        {
+            f->filter.mgmt_subtype_bitmap = 0xffff;
+        }
+        else
+        {
+            f->filter.mgmt_subtype_bitmap |= (1 << (uint8_t) subtype.mgmt_subtype);
+        }   
+    }
+    else if(type == PKT_DATA || type == PKT_ANY)
+    {
+        if(subtype.data_subtype == PKT_DATA_ANY)
+        {
+            f->filter.data_subtype_bitmap = 0xffff;
+        }
+        else
+        {
+            f->filter.data_subtype_bitmap |= (1 << (uint8_t) subtype.data_subtype);
+        }   
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Invalid type passed to pkt_sniffer_add_type_subtype");
+        return ESP_OK;
+    }
+
+    if(type == PKT_ANY)
+    {
+        f->filter.type_bitmap = 0xff;
+    }
+    else
+    {
+        f->filter.type_bitmap |= (1 << (uint8_t) type);
+    }
+
+    return ESP_OK;
 }
 
 esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_src_t* f)
@@ -151,7 +199,7 @@ esp_err_t pkt_sniffer_clear_filter_list(void)
     return ESP_OK;
 }
 
-esp_err_t pkt_sniffer_launch(uint8_t channel, wifi_promiscuous_filter_t type_filter)
+esp_err_t pkt_sniffer_launch(uint8_t channel)
 {
     if(!inited)
     {
@@ -171,13 +219,17 @@ esp_err_t pkt_sniffer_launch(uint8_t channel, wifi_promiscuous_filter_t type_fil
     }
 
     esp_err_t e;
+    wifi_promiscuous_filter_t filt = 
+    {
+        .filter_mask=WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
+    };
 
     if( (e = esp_wifi_set_promiscuous(1)) != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to set to promiscious mode");
         return e;
     }
-    if( (e = esp_wifi_set_promiscuous_filter(&type_filter)) != ESP_OK)
+    if( (e = esp_wifi_set_promiscuous_filter(&filt)) != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to set to promiscious filter");
         return e;

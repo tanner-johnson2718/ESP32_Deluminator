@@ -124,20 +124,15 @@ struct ap_summary
     uint8_t num_assoc_stas;
 } typedef ap_summary_t;
 
+
 //*****************************************************************************
-// mac_logger_launch) Creates the q and lock if first time calling. Launches 
-//                    the mac logger task if not running, then registers the
-//                    filtered Q with the pkt sniffer. 
-//
-// ap_mac) Optional AP mac filter. If not NULL, the mac logger will only add
-//         stas that are sending traffic whose AP mac addr field matches that
-//         that is passed.
+// mac_logger_launch) ..
 //
 // Returns) OK            - Everything good
 //          INVALID_STATE - Already running or task create fail
 //          NO_MEM        - Q create fail
 //*****************************************************************************
-esp_err_t mac_logger_launch(uint8_t* ap_mac);
+esp_err_t mac_logger_launch(void);
 
 
 //*****************************************************************************
@@ -183,17 +178,9 @@ esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta);
 
 
 //*****************************************************************************
-// mac_logger_clear) reset both the sta and ap list
+// mac_logger_clear) Clear the AP list
 //
 // Return) OK            - Successfully cleared the lists
 //         INVALID_STATE - couldn't get lock
 //*****************************************************************************
 esp_err_t mac_logger_clear(void);
-
-
-//*****************************************************************************
-// mac_logger_kill) Kill the mac logger task
-//
-// Returns) ESP_OK on successful kill or INVALID STATE if couldnt get the lock
-//*****************************************************************************
-esp_err_t mac_logger_kill(void);
