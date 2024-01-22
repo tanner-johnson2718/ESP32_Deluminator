@@ -538,22 +538,19 @@ esp_err_t mac_logger_launch(void)
     pkt_sniffer_filtered_src_t f = {0};
     f.cb = mac_logger_cb;
     pkt_subtype_t x;
-    x.mgmt_subtype = PKT_MGMT_ANY;
-    pkt_sniffer_add_type_subtype(&f, PKT_ANY, x);
-    pkt_sniffer_add_type_subtype(&f, PKT_ANY, x);
+    x.data_subtype = PKT_DATA_ANY;
+    pkt_sniffer_add_type_subtype(&f, PKT_DATA, x);
+    x.mgmt_subtype = PKT_ASSOC_REQ;
+    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
+    x.mgmt_subtype = PKT_ASSOC_RES;
+    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
+    x.mgmt_subtype = PKT_BEACON;
+    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
+    x.mgmt_subtype = PKT_PROBE_RES;
+    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
+    
 
     esp_err_t e = pkt_sniffer_add_filter(&f);
-    ESP_LOGI(TAG, "filter added");
+    // ESP_LOGI(TAG, "Type Mask = %x   Data Mask = %x   MGMT Mask = %x\n", f.filter.type_bitmap, f.filter.data_subtype_bitmap, f.filter.mgmt_subtype_bitmap);
     return e;
-}
-
-esp_err_t mac_logger_clear(void)
-{
-    if(_take_lock()) {return ESP_ERR_INVALID_STATE; }
-
-    clear_ap_list();
-
-    ESP_LOGI(TAG, "Cleared Lists");
-    _release_lock();
-    return ESP_OK;
 }

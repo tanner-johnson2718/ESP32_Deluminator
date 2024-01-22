@@ -64,7 +64,7 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
         return;
     }
 
-    mgmt_header_t* hdr = (mgmt_header_t*) buff;
+    mgmt_header_t* hdr = (mgmt_header_t*) p->payload;
 
     uint8_t i;
     for(i = 0; i < num_filters; ++i)

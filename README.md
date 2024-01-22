@@ -38,16 +38,15 @@ We do not support or condone the use of any attacks on non consenting parties. P
     * While checking this its good to verify that the API function has appriopiatly strict check on input args and is returning error codes that are actually descriptive.
 * (5) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
-* (6) All components *should* use Kconfig params to set defines within their module
-* (7) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
+* (6) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
 
-| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
-| --------------- | --- | --- | --- | --- | --- | --- | --- |
-| mac logger      |  X  |  X  |     |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| tcp_file_server |  X  |  X  |  X  |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |     |  X  |  X  |  X  |     |
-| repl_mux        |  X  |  X  |  X  |  X  |  X  |  X  |     |
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) |
+| --------------- | --- | --- | --- | --- | --- | --- |
+| mac logger      |  X  |  X  |     |  X  |  X  |     |
+| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |
+| tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |     |
+| repl_mux        |  X  |  X  |  X  |  X  |  X  |     |
 
 ## JTAG and running GDB
 
