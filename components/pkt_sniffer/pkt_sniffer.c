@@ -152,10 +152,7 @@ esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f,
 
 esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_src_t* f)
 {
-    if(!inited)
-    {
-        _pkt_sniffer_init();
-    }
+    if(!inited){ _pkt_sniffer_init(); }
 
     if(!xSemaphoreTake(lock, 0))
     {
@@ -180,10 +177,7 @@ esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_src_t* f)
 
 esp_err_t pkt_sniffer_clear_filter_list(void)
 {
-    if(!inited)
-    {
-        _pkt_sniffer_init();
-    }
+    if(!inited) { _pkt_sniffer_init(); }
 
     if(!xSemaphoreTake(lock, 0))
     {
@@ -201,10 +195,7 @@ esp_err_t pkt_sniffer_clear_filter_list(void)
 
 esp_err_t pkt_sniffer_launch(uint8_t channel)
 {
-    if(!inited)
-    {
-        _pkt_sniffer_init();
-    }
+    if(!inited) { _pkt_sniffer_init(); }
 
     if(channel < 1 || channel > 11)
     {
@@ -254,10 +245,7 @@ esp_err_t pkt_sniffer_launch(uint8_t channel)
 
 esp_err_t pkt_sniffer_kill(void)
 {
-    if(!inited)
-    {
-        _pkt_sniffer_init();
-    }
+    if(!inited) { _pkt_sniffer_init(); }
 
     if(!_pkt_sniffer_running)
     {

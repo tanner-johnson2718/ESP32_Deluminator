@@ -22,11 +22,8 @@
 //    * https://en.wikipedia.org/wiki/802.11_frame_types
 //
 // TODO)
-//    * Reassoc Req
-//    * Auth
-//    * Action Frame
 //    * All data shit
-//    * EAPOL?  
+//    * Bit Placement Test
 
 #pragma once
 #include "dot11.h"

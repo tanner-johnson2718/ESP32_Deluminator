@@ -50,7 +50,9 @@ typedef struct
     uint8_t dest_mac[6];
     uint8_t src_mac[6];
     uint8_t ap_mac[6];
-    uint16_t sequence;
+    
+    uint16_t fragment_num : 4;
+    uint16_t sequence_num : 12;
 } mgmt_header_t;
 
 typedef struct
@@ -64,18 +66,20 @@ typedef struct
 //*****************************************************************************
 typedef struct
 {
-    uint16_t ess_capabilities : 1;
-    uint16_t ibss_status      : 1;
-    uint16_t cfp              : 2;
-    uint16_t privacy          : 1;
-    uint16_t short_preable    : 1;
-    uint16_t pbcc             : 1;
-    uint16_t channel_agility  : 1;
-    uint16_t reserved0        : 2;
-    uint16_t short_slot_time  : 1;
-    uint16_t reserved1        : 2;
-    uint16_t dsss_odfm        : 1;
-    uint16_t reserved2        : 2;
+    uint8_t ess_capabilities : 1;
+    uint8_t ibss_status      : 1;
+    uint8_t cfp              : 2;
+    uint8_t privacy          : 1;
+    uint8_t short_preable    : 1;
+    uint8_t pbcc             : 1;
+    uint8_t channel_agility  : 1;
+    uint8_t : 0;
+
+    uint8_t reserved0        : 2;
+    uint8_t short_slot_time  : 1;
+    uint8_t reserved1        : 2;
+    uint8_t dsss_odfm        : 1;
+    uint8_t reserved2        : 2;
 } fixed_param_capability_t;
 
 typedef uint16_t   fixed_param_listen_interval_t;
@@ -233,10 +237,54 @@ typedef mgmt_header_t atim_t;
 // an authentication between and AP and an STA. It contains a single fixed 
 // param given the reason code.
 //*****************************************************************************
-typedef struct disassoc
+typedef struct
 {
     mgmt_header_t mgmt_header;
     fixed_param_reason_code_t reason_code;
 } disassoc_t;
 
 typedef disassoc_t deauth_t;
+
+//*****************************************************************************
+// Reassocation Request - when moving in out of a service set on may need to 
+// reassociate if one is already authenticated. This packet is of subtype 2 and
+// has the following fixed fields.
+//
+// |--------------------------------------------------------|
+// | Capability info | Listen Interval | Current AP Address |
+// |--------------------------------------------------------|
+//
+// It also contains some of the following tagged fields)
+//   - SSID
+//   - Supported Rates
+//*****************************************************************************
+typedef struct
+{
+    mgmt_header_t mgmt_header;
+    fixed_param_capability_t capabilities;
+    fixed_param_listen_interval_t listen_interval;
+    fixed_param_current_mac_t current_ap_mac;
+    uint8_t tagged_params[];
+} reassoc_req_t;
+
+//*****************************************************************************
+// Authentication - This is the first set of packets exchanged when a STA is 
+// joining an AP. Legacy networks had the shared password exchnaged here, but
+// newer protocols have much stronger security and add psk key exchange till
+// later in the process. This packet is of subtype 11 and has the following
+// fixed fields.
+//
+// |--------------------------------------------|
+// | Capabilities info | Status Code | Assoc ID |
+// |--------------------------------------------|
+//
+// It should also include a supported rates tagged param
+//*****************************************************************************
+typedef struct
+{
+    mgmt_header_t mgmt_header;
+    fixed_param_capability_t capabilities;
+    fixed_param_status_code_t status_code;
+    fixed_param_aid_t aid;
+    uint8_t tagged_params[];
+} auth_t;

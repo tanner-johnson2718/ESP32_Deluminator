@@ -1,7 +1,3 @@
-// TODO)
-//    * Better doc on pkt structure, wifi connection flow, etc
-//    * kill and clear
-
 #pragma once
 #include <stdint.h>
 #include "esp_err.h"
@@ -58,37 +54,6 @@
 //
 // Normal Data Pkts) Normal data packets add or update an STA within an already
 // created AP. If no AP exists, ignore the pkt.
-//
-// Notes on Beacon PKTs
-//
-// * Sent automatically by all acccess points at a regular interval.
-// * FC = `0x8000`
-//     * This decodes to a frame of type Management and a subtype of beacon
-// * DA = `ff:ff:ff:ff:ff:ff` and SA=BSSID
-// * In a beacon frame rate of beacon frame sent is advertised
-// * Capabilites, SSID (the ascii name of the AP), Supported rates are all sent.
-// * To see this, do a dump with the `-e` flag targeting an AP: `sudo airodump-ng wlp5s0mon -e --bssid B6:FE:F4:C3:ED:EE -c 6 -w out`
-// * Open wire shark on the .cap file and you should see a butt load of beacons
-// * When scanning for APs listening for beacons is considered a passive scan
-
-// Note on Probe PKTs
-// 
-// * Deliberatley sent by the station (STA) to the AP aka an active AP scan
-// * FC = `0x4000`
-//     * This decodes to a managment type with probe request sub type
-// * DA = `ff:ff:ff:ff:ff:ff` = BSSID
-// * SA = <sender MAC>
-// * The packet really only contains the STAs advertised rates and the ssid of a AP if the scan was targeted to an AP
-// * To capture these packets we just set the ESP32 deluminator to scan our home AP and dumped packets targeting that AP
-
-// The connection process of an STA connectiong to an ap involves a 3 stage 
-// process. Authentication. Association and EAPOL. Authenitcation. This step is
-// mainly kept from the days of WEP and can be relatively ignored except for 
-// the fact that it initiates the next steps. Association. This step is 
-// important because it is where the STA declares the ssid for which it is 
-// connecting. If the AP is open this step would be the last. EAPOL. This is 
-// where crypto key info is exchanged. This is what we need to capture in order 
-// to capture ones encrypted psks.
 
 #define SSID_MAX_LEN 33
 #define MAC_LEN 6
@@ -126,13 +91,15 @@ struct ap_summary
 
 
 //*****************************************************************************
-// mac_logger_launch) ..
+// mac_logger_launch) Create the component wide lock if it hasnt already then
+//                    add the filter and call back to the pkt sniffer. Can be
+//                    recalled if pkt sniffer filter list is cleared.
 //
 // Returns) OK            - Everything good
 //          INVALID_STATE - Already running or task create fail
 //          NO_MEM        - Q create fail
 //*****************************************************************************
-esp_err_t mac_logger_launch(void);
+esp_err_t mac_logger_init(void);
 
 
 //*****************************************************************************

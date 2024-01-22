@@ -168,6 +168,8 @@ static inline void create_ap(char* ssid, uint8_t ssid_len, uint8_t* bssid, uint8
     ap_list[ap_list_len].channel = channel;
     ap_list[ap_list_len].rssi = rssi;
     ap_list_len++;
+
+    ESP_LOGI(TAG, "AP Added: %s (%d/%d)", ap_list[ap_list_len-1].ssid, ap_list_len, CONFIG_MAC_LOGGER_MAX_APS);
 }
 
 static inline void create_sta(uint8_t ap_index, uint8_t* sta_mac, int8_t rssi)
@@ -187,74 +189,13 @@ static inline void create_sta(uint8_t ap_index, uint8_t* sta_mac, int8_t rssi)
     memcpy(ap_list[ap_index].stas[ap_list[ap_index].num_assoc_stas].mac, sta_mac, MAC_LEN);
     ap_list[ap_index].stas[ap_list[ap_index].num_assoc_stas].rssi = rssi;
     ap_list[ap_index].num_assoc_stas++;
+
+    ESP_LOGI(TAG, "STA "MACSTR" added to %s (%d/%d)", MAC2STR(sta_mac), ap_list[ap_index].ssid, ap_list[ap_index].num_assoc_stas, CONFIG_MAC_LOGGER_MAX_STAS);
 }
 
 //*****************************************************************************
 // Packet Parsing Helpers
 //*****************************************************************************
-
-#define SEQ_NUM_LB        0x16
-#define SEQ_NUM_LB_MASK   0xF0
-#define SEQ_NUM_LB_RSHIFT 0x4
-#define SEQ_NUM_UB        0x17
-#define SEQ_NUM_UB_MASK   0xFF
-#define SEQ_NUM_UB_LSHIFT 0x8
-#define TO_DS_BYTE        0x1
-#define TO_DS_MASK        0x1
-#define FROM_DS_BYTE      0x1
-#define FROM_DS_MASK      0x2
-
-static inline uint8_t get_type(uint8_t* pkt)
-{
-    return (pkt[0] & 0x0c) >> 2;
-}
-
-static inline uint8_t get_subtype(uint8_t* pkt)
-{
-    return (pkt[0] >> 4) & 0x0F;
-}
-
-static inline int16_t get_seq_num(uint8_t* pkt)
-{
-    int16_t lb = (((int16_t)pkt[SEQ_NUM_LB]) & SEQ_NUM_LB_MASK) >> SEQ_NUM_LB_RSHIFT;
-    int16_t ub = (((int16_t)pkt[SEQ_NUM_UB]) & SEQ_NUM_UB_MASK) << SEQ_NUM_UB_LSHIFT; 
-
-    return lb + ub;
-}
-
-static inline uint8_t get_to_ds(uint8_t* pkt)
-{
-    return !(!(pkt[TO_DS_BYTE] & TO_DS_MASK));
-}
-
-static inline uint8_t get_from_ds(uint8_t* pkt)
-{
-    return !(!(pkt[FROM_DS_BYTE] & FROM_DS_MASK));
-}
-
-// assume type is known to be mgmt
-static inline uint8_t is_beacon(uint8_t* p)
-{
-    return get_subtype(p) == 8;
-}
-
-// assume type is known to be mgmt
-static inline uint8_t is_probe(uint8_t* p)
-{
-    return get_subtype(p) == 5;
-}
-
-// assume type is known to be mgmt
-static inline uint8_t is_assoc_req(uint8_t* p)
-{
-    return get_subtype(p) == 0;
-}
-
-// assume type is known to be mgmt
-static inline uint8_t is_assoc_res(uint8_t* p)
-{
-    return get_subtype(p) == 1;
-}
 
 // assume type is known to be data
 static inline int8_t get_eapol_index(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
@@ -264,14 +205,13 @@ static inline int8_t get_eapol_index(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
     if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
     {
         // eapol
-        int16_t s = get_seq_num(p);
-        uint8_t to = get_to_ds(p);
-        uint8_t from = get_from_ds(p);
+        int16_t s = ((mgmt_header_t*) p)->sequence_num;
+        uint8_t ds = ((mgmt_header_t*) p)->ds_status;
 
-        if     (s == 0 && to == 0 && from == 1) { return 0; }
-        else if(s == 0 && to == 1 && from == 0) { return 1; }
-        else if(s == 1 && to == 0 && from == 1) { return 2; }
-        else if(s == 1 && to == 1 && from == 0) { return 3; }
+        if     (s == 0 && ds == 2) { return 0; }
+        else if(s == 0 && ds == 1) { return 1; }
+        else if(s == 1 && ds == 2) { return 2; }
+        else if(s == 1 && ds == 1) { return 3; }
     }
 
     return -1;
@@ -442,15 +382,15 @@ void mac_logger_cb(void* pkt,
     }
     else if(type == PKT_MGMT)
     {
-        if(is_beacon(pkt) || is_probe(pkt))
+        if(subtype.mgmt_subtype == PKT_BEACON || subtype.mgmt_subtype == PKT_PROBE_RES)
         {
             parse_beacon_pkt(pkt, meta_data);
         }
-        else if(is_assoc_req(pkt))
+        else if(subtype.mgmt_subtype == PKT_ASSOC_REQ)
         {
             parse_eapol_pkt(0, pkt, meta_data);
         }
-        else if(is_assoc_res(pkt))
+        else if(subtype.mgmt_subtype == PKT_ASSOC_RES)
         {
             parse_eapol_pkt(1, pkt, meta_data);
         }
@@ -460,7 +400,6 @@ void mac_logger_cb(void* pkt,
 //*****************************************************************************
 //  Public Functions
 //*****************************************************************************
-
 
 esp_err_t mac_logger_get_ap_list_len(uint8_t* n)
 {
@@ -525,7 +464,7 @@ esp_err_t mac_logger_get_sta(uint8_t ap_index, uint8_t sta_index, sta_t* sta)
     return ESP_OK;
 }
 
-esp_err_t mac_logger_launch(void)
+esp_err_t mac_logger_init(void)
 {
     if(!one_time_init_done)
     {
@@ -553,4 +492,15 @@ esp_err_t mac_logger_launch(void)
     esp_err_t e = pkt_sniffer_add_filter(&f);
     // ESP_LOGI(TAG, "Type Mask = %x   Data Mask = %x   MGMT Mask = %x\n", f.filter.type_bitmap, f.filter.data_subtype_bitmap, f.filter.mgmt_subtype_bitmap);
     return e;
+}
+
+esp_err_t mac_logger_clear(void)
+{
+    if(_take_lock()) {return ESP_ERR_INVALID_STATE; }
+
+    clear_ap_list();
+
+    ESP_LOGI(TAG, "Cleared Lists");
+    _release_lock();
+    return ESP_OK;
 }

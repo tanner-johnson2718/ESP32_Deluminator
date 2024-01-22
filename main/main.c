@@ -1,5 +1,4 @@
 // TODO)
-//   * system map and better overview doc?
 //   * help_net
 //   * PKT sniffer delayed launch
 
@@ -135,8 +134,9 @@ static int do_dump_wifi_stats(int argc, char** argv);
 
 static int do_send_deauth(int, char**);
 
-static int do_mac_logger_launch(int argc, char** argv);
+static int do_mac_logger_init(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
+static int do_mac_logger_clear(int argc, char** argv);
 
 static int do_pkt_sniffer_launch(int argc, char** argv);
 static int do_pkt_sniffer_kill(int argc, char** argv);
@@ -193,7 +193,8 @@ void app_main(void)
     register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
     register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
     register_no_arg_cmd("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
-    register_no_arg_cmd("mac_logger_launch", "Register the Mac logger cb with pkt sniffer and launch the task", &do_mac_logger_launch);
+    register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
+    register_no_arg_cmd("mac_logger_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
     register_no_arg_cmd("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
 
     // TCP File Server test driver repl functions
@@ -394,9 +395,9 @@ static int do_send_deauth(int argc, char** argv)
     return 0;
 }
 
-static int do_mac_logger_launch(int argc, char** argv)
+static int do_mac_logger_init(int argc, char** argv)
 {
-    mac_logger_launch();
+    mac_logger_init();
     return 0;
 }
 
@@ -427,6 +428,12 @@ static int do_mac_logger_dump(int argc, char** argv)
     } 
     
     
+    return 0;
+}
+
+static int do_mac_logger_clear(int argc, char** argv)
+{
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_clear());
     return 0;
 }
 
