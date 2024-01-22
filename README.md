@@ -42,7 +42,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
 
 | Component       | (1) | (2) | (3) | (4) | (5) | (6) |
 | --------------- | --- | --- | --- | --- | --- | --- |
-| mac logger      |  X  |  X  |     |  X  |  X  |     |
+| mac logger      |  X  |  X  |  X  |  X  |  X  |     |
 | pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |
 | tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |
 | wsl_bypasser    |  X  |  X  |     |  X  |  X  |     |
@@ -82,6 +82,7 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * look into exactly what is happining when we crack
     * maybe make a python script for that
     * Only store pertinent eapol info
+    * How do we decrypt traffic on a net
 * Turn wsl by passer into deauth agent
 * IP Logger
 * Memory and Perfomance Analysis

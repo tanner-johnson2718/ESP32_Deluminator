@@ -368,16 +368,14 @@ void mac_logger_cb(void* pkt,
                    pkt_type_t type, 
                    pkt_subtype_t subtype)
 {
+    parse_data_pkt(pkt, meta_data);  
+    
     if(type == PKT_DATA)
     {
         int8_t eapol_index = get_eapol_index(pkt, meta_data);
         if(eapol_index != -1)
         {
             parse_eapol_pkt(eapol_index + 2, pkt, meta_data);
-        }
-        else
-        {
-            parse_data_pkt(pkt, meta_data);   
         }
     }
     else if(type == PKT_MGMT)
@@ -479,18 +477,11 @@ esp_err_t mac_logger_init(void)
     pkt_subtype_t x;
     x.data_subtype = PKT_DATA_ANY;
     pkt_sniffer_add_type_subtype(&f, PKT_DATA, x);
-    x.mgmt_subtype = PKT_ASSOC_REQ;
-    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
-    x.mgmt_subtype = PKT_ASSOC_RES;
-    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
-    x.mgmt_subtype = PKT_BEACON;
-    pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
-    x.mgmt_subtype = PKT_PROBE_RES;
+    x.mgmt_subtype = PKT_MGMT_ANY;
     pkt_sniffer_add_type_subtype(&f, PKT_MGMT, x);
     
-
     esp_err_t e = pkt_sniffer_add_filter(&f);
-    // ESP_LOGI(TAG, "Type Mask = %x   Data Mask = %x   MGMT Mask = %x\n", f.filter.type_bitmap, f.filter.data_subtype_bitmap, f.filter.mgmt_subtype_bitmap);
+    ESP_LOGI(TAG, "Type Mask = %x   Data Mask = %x   MGMT Mask = %x\n", f.filter.type_bitmap, f.filter.data_subtype_bitmap, f.filter.mgmt_subtype_bitmap);
     return e;
 }
 
