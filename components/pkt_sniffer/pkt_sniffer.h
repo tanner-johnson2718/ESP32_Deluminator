@@ -20,10 +20,6 @@
 // Resources)
 //    * https://www.oreilly.com/library/view/80211-wireless-networks/0596100523/ch04.html
 //    * https://en.wikipedia.org/wiki/802.11_frame_types
-//
-// TODO)
-//    * All data shit
-//    * Bit Placement Test
 
 #pragma once
 #include "dot11.h"
@@ -32,7 +28,9 @@
 // We define a structure that allows one to specifiy which type and sub type
 // of packets should invoke the call back attached to the filter. The bitmaps
 // contain a 1 in the i-th bit if the packet is of type or subtype i where i is 
-// the integer index of the type or subtype in the enums defined in dot11.h .
+// the integer index of the type or subtype in the enums defined in dot11.h. If
+// an inbound packet matches is of a type and subtype that is contained in the
+// bitmap, then the associated cb is called.
 //
 // In the pkt_sniffer_cb the pkt is just a uint8_t* buffer and the meta data is
 // a esp_wifi.h struct of  wifi_pkt_rx_ctrl_t*. We keep these void* to keep

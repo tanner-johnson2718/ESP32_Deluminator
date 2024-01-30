@@ -19,8 +19,7 @@ We do not support or condone the use of any attacks on non consenting parties. P
     * USB serial (`idf.py -p /dev/ttyUSB0 monitor`) OR
     * REPL TCP server (`nc 192.168.4.1 421`) (these settings can be changed in the menuconfig)
     * Through the repl one can interface, start, stop, and configure the main components.
-* Type `help` on the repl to see all possible commands
-    * When using REPL TCP server type `help_net`
+* Type `help` on the serial repl to see all possible commands
 * Documentation can be found in `main.c` and in every components header file.
 
 ## Typical Attack Flow
@@ -39,16 +38,17 @@ We do not support or condone the use of any attacks on non consenting parties. P
 * (5) All component API functions **shall** start with the name of the component
     * Abbreviations are allowed i.e. `ui_init` for the user interface components
 * (6) Completely Static memory i.e. no malloc and esp structures allocated statically or destroyed within the scope they were created. Check this off only once the module has undergone rigorious memory testing.
+* (7) All config should be exported via a Kconfig param
 
-| Component       | (1) | (2) | (3) | (4) | (5) | (6) |
-| --------------- | --- | --- | --- | --- | --- | --- |
-| mac logger      |  X  |  X  |  X  |  X  |  X  |     |
-| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |
-| tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |
-| wsl_bypasser    |  X  |  X  |     |  X  |  X  |     |
-| repl_mux        |  X  |  X  |  X  |  X  |  X  |     |
+| Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
+| --------------- | --- | --- | --- | --- | --- | --- | --- |
+| mac logger      |  X  |  X  |  X  |  X  |  X  |     |     |
+| pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |     |
+| tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |     |
+| wsl_bypasser    |  X  |  X  |     |  X  |  X  |     |     |
+| repl_mux        |  X  |  X  |  X  |  X  |  X  |     |  X  |
 
-## JTAG and running GDB
+## JTAG, GDB, and Perf / Mem Profiling
 
 # 3D printed Case for v0.2+ (NO UI)
 
@@ -79,10 +79,15 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * [Rotary encoder](https://www.amazon.com/dp/B07F26CT6B?psc=1&ref=ppx_yo2ov_dt_b_product_details)
 
 ## TODO
+* move eapol to it own modual
+* 802.11 data pkt parsing
+* wsl bypassser into auto deauth agent
 * look into exactly what is happining when we crack
     * maybe make a python script for that
     * Only store pertinent eapol info
     * How do we decrypt traffic on a net
-* Turn wsl by passer into deauth agent
 * IP Logger
-* Memory and Perfomance Analysis
+* 3D printed case
+* Mem and Perf analysis
+* Readme
+* Typical Attack Flow

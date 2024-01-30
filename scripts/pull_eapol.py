@@ -3,8 +3,6 @@ from scapy.all import wrpcap
 from scapy.layers.dot11 import Dot11
 import socket
 import sys
-import select
-import time
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(("192.168.4.1", 420))
@@ -33,15 +31,19 @@ for i in range(0, n_files):
 
 
 print("Packet Dumps Found from server: ")
-print(files)
+for i in range(0, len(files)):
+    print(str(i) + " : " + files[i].decode('utf-8'))
 print()
+inp = input("Index of File to pull: ")
+index = int(inp)
 
-bstr = files[0]
-_bstr = bstr.decode('ascii').strip('\n').encode('ascii')
+bstr = files[index]
+_bstr = bstr
+# _bstr = bstr.decode('ascii').strip('\n').encode('ascii')
 data = b''
     
 print("Requesing: " + str(_bstr))
-sock.send(bytes([indexs[0]]))
+sock.send(bytes([indexs[index]]))
 print("Server Sending " + str(sock.recv(33)[1:]))
 
 l = 256

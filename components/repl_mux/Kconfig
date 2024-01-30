@@ -5,7 +5,7 @@ menu "REPL MUX Config"
         default 2
     
     config REPL_MUX_MAX_LOG_MSG
-        int "Max size of a log message"
+        int "Max size of a log message and input message"
         default 128
 
     config REPL_MUX_Q_SIZE
@@ -31,5 +31,21 @@ menu "REPL MUX Config"
     config REPL_MUX_PORT
         int "Port of repl server"
         default 421
+
+    config REPL_MUX_MAX_NUM_CMD
+        int "Number of commands that can be regstered in the command table"
+        default 32
+
+    config REPL_MUX_MAX_CMD_ARG
+        int "Max number of args a commmand can have"
+        default 6
+
+    config REPL_MUX_NAME_LEN
+        int "Length of a command name string"
+        default 32
+
+    config REPL_MUX_DESC_LEN
+        int "Length of a command name string"
+        default 64
 
 endmenu

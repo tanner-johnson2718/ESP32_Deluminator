@@ -1,13 +1,8 @@
-// TODO)
-//   * help_net
-//   * PKT sniffer delayed launch
-
 // This is the starting point for the esp32 deluminator. The main module here
 // inits all the important esp32 idf subsystems. These are)
 //
 //    * Flash memory w/ spiffs file system to store files
 //    * Flash memory w/ NVS storage for the wifi system
-//    * REPL serial console for driving system
 //    * Wifi in AP/STA mode so as to have an access point and station
 //
 // Next main registers all of our "services" or components to act on system
@@ -26,7 +21,8 @@
 //                     Allows us to send deauth pkts posing as a differnt AP
 //    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
 //                        to requestors over the AP.
-//    * REPL MUX - Provides multiplexing of logging and input to the repl.
+//    * REPL MUX - Provides multiplexing of logging and input to the repl. Also
+//                 provides command table (i.e. our own version of esp console)
 
 #include <stdio.h>
 #include <dirent.h>
@@ -34,13 +30,10 @@
 
 #include "esp_partition.h"
 #include "esp_spiffs.h"
-#include "esp_console.h"
-#include "argtable3/argtable3.h"
 #include "esp_log.h"
 #include "esp_event.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "cmd_nvs.h"
 #include "heap_memory_layout.h"
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -75,12 +68,7 @@ static const char* TAG = "MAIN";
 // partition. The esp_wifi module requires it otherwise our code does not. The
 // SPIFFS is a SPI Flash File system. Is has a flat dir structure and no dirs
 // are allowed. Once inited, one can use the C standard Library functions to 
-// create, write, and read files from the system. The main files we will store
-// are:
-//
-//     * /spiffs/history.txt - REPL command line history
-//     * /spiffs/event.txt   - Event Loop Debug info
-//     * /spiffs/<ssid>.pkt  - Packet Dump of WPA2 handshakes
+// create, write, and read files from the system. 
 //
 //*****************************************************************************
 
@@ -95,30 +83,13 @@ static void initialize_filesystem(void);
 static void initialize_nvs(void);
 
 //*****************************************************************************
-// One of the main components of the ESP32 Deluminator is a wrapper for 
-// the esp idf console library. This provides a REPL over the USB serial 
-// console which can be accesed by running idf.py -p /dev/ttyUSB0 monitor.
-//
-// We also added a REPL MUX layer on top of the esp logging and esp console
-// modules. This allows us to 1) send logging data to multiple places and to
-// 2) interact with the repl over the created wifi access point.
-//
-// **NOTE**
-//    - printf only sends traffic over UART
-//    - ESP_LOGE, etc adds debug level, tag and time stamp and will send 
-//      through the REPL MUX
-//    - use esp_log_write for generic log messages that go through the mux
-//      without adding all the extra stuff
-// 
-// We use the base API but do not use its arg parsing frame work and we impose
-// arg parsing on the writer of the repl func. To register a REPL function use
-// register_no_arg_cmd(...) on a function with the signature:
-//                    int f(int argc, char** argv) 
+// One of the main components of the ESP32 Deluminator is our own repl system
+// that provides a means for registering commands and calling those commands
+// from either a tcp socket or via UART.
 // 
 // The below functions interface with the API of our components and gives us
 // a means of intercating with our system through the repl.
 //*****************************************************************************
-static int do_dump_event_log(int, char**);
 static int do_cat(int, char**);
 static int do_ls(int, char**);
 static int do_df(int, char**);
@@ -141,23 +112,29 @@ static int do_mac_logger_clear(int argc, char** argv);
 static int do_pkt_sniffer_launch(int argc, char** argv);
 static int do_pkt_sniffer_kill(int argc, char** argv);
 static int do_pkt_sniffer_clear(int argc, char** argv);
+static int do_pkt_sniffer_launch_delayed(int argc, char** argv);
 
-int do_tcp_file_server_kill(int argc, char** argv);
-int do_tcp_file_server_launch(int argc, char** argv);
-
-static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr);
+static int do_tcp_file_server_kill(int argc, char** argv);
+static int do_tcp_file_server_launch(int argc, char** argv);
 
 //*****************************************************************************
 // We configure the wifi such that it can both be a host and a client. Be sure
 // that you do not run pkt sniffer with a client connected or it will fail. We
 // implement the following scheme. When a client connects we kill the packet
-// sniffer its running. In the future if there are other services that cant be 
+// sniffer if running. In the future if there are other services that cant be 
 // ran concurrently with a client than we will kill them as well.
+//
+// We provide a command called pkt_sniffer_delay_launch. It works the same as
+// the packet sniffer launch function but will wait until the client STA
+// disconnects from the AP. Only one client can conect to the AP at time thus
+// this ensures the disconnect event leaves the AP with no STAs
 //*****************************************************************************
 #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
 #define EXAMPLE_ESP_WIFI_CHANNEL 1
 #define EXAMPLE_ESP_WIFI_PASS "abcd1234"
 #define EXAMPLE_MAX_STA_CONN 1
+
+static uint8_t delayed_launch = 0;  // contains channel when set
 
 static void init_wifi(void);
 
@@ -170,51 +147,33 @@ void app_main(void)
     init_wifi();
     ESP_ERROR_CHECK(repl_mux_init());
 
-    // ESP IDF REPL Func Registration
-    esp_console_register_help_command();
-    register_nvs();   // comes from esp-idf/examples/console/advanced
-
     // Some misc system level repl functions defined below
-    register_no_arg_cmd("part_table", "Print the partition table", &do_part_table);
-    register_no_arg_cmd("ls", "List files on spiffs", &do_ls);
-    register_no_arg_cmd("df", "Disk free on spiffs", &do_df);
-    register_no_arg_cmd("cat", "cat contents of file", &do_cat);
-    register_no_arg_cmd("dump_event_log", "Dump the event log to disk: dump_event_log <file>", &do_dump_event_log);
-    register_no_arg_cmd("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
-    register_no_arg_cmd("tasks", "Print List of Tasks", &do_tasks);
-    register_no_arg_cmd("free", "Print Available Heap Mem", &do_free);
-    register_no_arg_cmd("restart", "SW Restart", &do_restart);
-    register_no_arg_cmd("rm", "Delete all the files on the FS", &do_rm);
-    register_no_arg_cmd("get_task", "Print name of current task", &do_get_task);
-    register_no_arg_cmd("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
+    repl_mux_register("part_table", "Print the partition table", &do_part_table);
+    repl_mux_register("ls", "List files on spiffs", &do_ls);
+    repl_mux_register("df", "Disk free on spiffs", &do_df);
+    repl_mux_register("cat", "cat contents of file", &do_cat);
+    repl_mux_register("soc_regions", "Print Tracked RAM regions: soc_regions <all|free> <cond|ext>", &do_dump_soc_regions);
+    repl_mux_register("tasks", "Print List of Tasks", &do_tasks);
+    repl_mux_register("free", "Print Available Heap Mem", &do_free);
+    repl_mux_register("restart", "SW Restart", &do_restart);
+    repl_mux_register("rm", "Delete all the files on the FS", &do_rm);
+    repl_mux_register("get_task", "Print name of current task", &do_get_task);
+    repl_mux_register("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
-    register_no_arg_cmd("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
-    register_no_arg_cmd("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
-    register_no_arg_cmd("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
-    register_no_arg_cmd("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
-    register_no_arg_cmd("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
-    register_no_arg_cmd("mac_logger_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
-    register_no_arg_cmd("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
+    repl_mux_register("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
+    repl_mux_register("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
+    repl_mux_register("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
+    repl_mux_register("pkt_sniffer_launch_delayed", "Launch the pkt sniffer once client sta disconnected. Only run from TCP repl", &do_pkt_sniffer_launch_delayed);
+    repl_mux_register("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
+    repl_mux_register("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
+    repl_mux_register("mac_logger_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
+    repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
 
     // TCP File Server test driver repl functions
-    register_no_arg_cmd("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
-    register_no_arg_cmd("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
+    repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
+    repl_mux_register("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
-    // Start the REPL
-    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    esp_console_repl_t *repl = NULL;
-
-    repl_config.prompt = PROMPT_STR;
-    repl_config.max_cmdline_length = MAX_CMD_LINE_LEN;
-    repl_config.history_save_path = HISTORY_PATH;
-    repl_config.max_history_len = MAX_HISTORY_LEN;
-
-    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
-
-    ESP_LOGI(TAG, "REPL Starting. Saving history too %s", HISTORY_PATH);
-    ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
 
 //*****************************************************************************
@@ -284,7 +243,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
   
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) 
     {
-        // wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
+        if(delayed_launch)
+        {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_launch(delayed_launch));
+            delayed_launch = 0;
+        }
     }
 }
 
@@ -340,29 +303,6 @@ void init_wifi(void)
 }
 
 //*****************************************************************************
-// REPL Command Helpers
-//*****************************************************************************
-
-static struct 
-{
-    struct arg_end *end;
-} no_args;
-
-static void register_no_arg_cmd(char* cmd_str, char* desc, void* func_ptr)
-{
-    no_args.end = arg_end(1);
-    const esp_console_cmd_t cmd = {
-        .command = cmd_str,
-        .help = desc,
-        .hint = NULL,
-        .func = func_ptr,
-        .argtable = &no_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-
-}
-
-//*****************************************************************************
 // REPL Logger funcs
 //*****************************************************************************
 
@@ -397,7 +337,7 @@ static int do_send_deauth(int argc, char** argv)
 
 static int do_mac_logger_init(int argc, char** argv)
 {
-    mac_logger_init();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_init());
     return 0;
 }
 
@@ -448,6 +388,20 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
     ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_launch((uint8_t) strtol(argv[1], NULL,10)));
 
     return 0;
+}
+
+static int do_pkt_sniffer_launch_delayed(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        esp_log_write(ESP_LOG_INFO, "","Usage: pkt_sniffer_launch_delayed <channel>");
+        return 1;
+    }
+
+    delayed_launch = ((uint8_t) strtol(argv[1], NULL,10));
+
+    return 0;
+
 }
 
 static int do_pkt_sniffer_kill(int argc, char** argv)
@@ -557,23 +511,6 @@ static int do_rm(int argc, char** argv)
         closedir(d);
     }
 
-    return 0;
-}
-
-static int do_dump_event_log(int argc, char** argv)
-{
-    if(argc != 2)
-    {
-        esp_log_write(ESP_LOG_INFO, "","Usage: dump_event_log <file>\n");
-        return 1;
-    }
-
-    const char* path = argv[1];
-    FILE* f = fopen(path, "w");
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_event_dump(f));
-
-    fclose(f);
     return 0;
 }
 
@@ -711,18 +648,29 @@ static int do_dump_soc_regions(int argc, char **argv)
 static int do_tasks(int argc, char **argv)
 {
     const size_t bytes_per_task = 40; /* see vTaskList description */
-    char *task_list_buffer = malloc(uxTaskGetNumberOfTasks() * bytes_per_task);
+    const size_t buff_size = uxTaskGetNumberOfTasks() * bytes_per_task;
+    char *task_list_buffer = malloc(buff_size);
     if (task_list_buffer == NULL) {
         ESP_LOGE(TAG, "failed to allocate buffer for vTaskList output");
         return 1;
     }
-    fputs("Task Name\tStatus\tPrio\tHWM\tTask#", stdout);
-#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
-    fputs("\tAffinity", stdout);
-#endif
-    fputs("\n", stdout);
     vTaskList(task_list_buffer);
-    fputs(task_list_buffer, stdout);
+    esp_log_write(ESP_LOG_INFO, "", "Task Name\tStatus\tPrio\tHWM\tTask#");
+#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
+    esp_log_write(ESP_LOG_INFO, "","\tAffinity\n");
+#else
+    esp_log_write(ESP_LOG_INFO, "", "\n");
+#endif
+
+    size_t i;
+    char line[bytes_per_task + 1];
+    for(i = 0; i < buff_size; i=i+bytes_per_task)
+    {
+        memcpy(line,task_list_buffer + i, bytes_per_task );
+        line[bytes_per_task] = 0;
+        esp_log_write(ESP_LOG_INFO, "", line);
+    }
+
     free(task_list_buffer);
     return 0;
 }

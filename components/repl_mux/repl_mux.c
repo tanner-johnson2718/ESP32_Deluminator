@@ -3,7 +3,7 @@
 
 #include "esp_system.h"
 #include "esp_log.h"
-#include "esp_console.h"
+#include "driver/uart.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -30,6 +30,114 @@ static const char* TAG = "REPL MUX";
 static uint8_t queue_active[CONFIG_REPL_MUX_N_QUEUES] = {0};
 static QueueHandle_t qs[CONFIG_REPL_MUX_N_QUEUES];
 
+static uint8_t num_cmds = 0;
+static cmd_t cmd_list[CONFIG_REPL_MUX_MAX_NUM_CMD];
+
+//*****************************************************************************
+// Private command table funcs
+//*****************************************************************************
+
+static int build_argv(char* input, char** argv)
+{
+    argv[0] = input;
+
+    uint8_t i;
+    int argc = 0;
+    char* start = input;
+    for(i = 0; i < CONFIG_REPL_MUX_MAX_LOG_MSG; ++i)
+    {
+        if(input[i] == 0)
+        {
+            argv[argc] = start;
+            ++argc;
+            return argc;
+        }
+
+        if(input[i] == ' ')
+        {
+            while(input[i] == ' ') {++i;}
+
+            argv[argc] = start;
+            ++argc;
+            start = input+i;
+
+            if(input[i] == 0)
+            {
+                return argc;
+            }
+
+            if(argc == CONFIG_REPL_MUX_MAX_CMD_ARG)
+            {
+                ESP_LOGE(TAG, "Input contained max argv, possibly cutting arg list short");
+                return argc;
+            }
+        }
+
+    }
+
+    ESP_LOGE(TAG, "WARNING Input to buildargv contained no NULL char");
+    return argc;
+}
+
+static int16_t lookup_cmd(char* name)
+{
+    uint8_t i;
+    for(i = 0; i < num_cmds; ++i)
+    {
+        if(strcmp(name, cmd_list[i].name) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int run_cmd(uint8_t index, int argc, char** argv)
+{
+    if(index >= num_cmds)
+    {
+        ESP_LOGE(TAG, "Tried to run command with outof bounds index");
+        return -1;
+    }
+
+    return cmd_list[index].func(argc, argv);
+}
+
+static void run(char* input)
+{
+    char* argv[CONFIG_REPL_MUX_MAX_CMD_ARG];
+
+    int argc = build_argv(input, argv);
+
+    int16_t index = lookup_cmd(argv[0]);
+    if(index < 0)
+    {
+        ESP_LOGE(TAG, "%s not found", argv[0]);
+        return;
+    }
+
+    int ret = run_cmd(index, argc, argv);
+    if(ret < 0)
+    {
+        ESP_LOGE(TAG, "%s returned non zero value", argv[0]);
+    }
+
+}
+
+static int do_help(int argc, char** argv)
+{
+    uint8_t i;
+    for(i = 0; i < num_cmds; ++i)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "%s\n",cmd_list[i].name);
+        esp_log_write(ESP_LOG_INFO, "", "   %s\n", cmd_list[i].desc);
+        esp_log_write(ESP_LOG_INFO, "", "\n");
+    }
+
+    return 0;
+}
+
 //*****************************************************************************
 // UART Q Consumer 
 //*****************************************************************************
@@ -38,12 +146,23 @@ static void uart_consumer_task_func(void* args)
 {
     repl_mux_message_t msg;
 
+    int stdin_fileno = fileno(stdin);
+    int flags = fcntl(stdin_fileno, F_GETFL);
+    flags |= O_NONBLOCK;
+    fcntl(stdin_fileno, F_SETFL, flags);
+
     queue_active[UART_Q] = 1;
     while(1)
     {
-        if(xQueueReceive(qs[UART_Q], &msg, portMAX_DELAY))
+        while(xQueueReceive(qs[UART_Q], &msg, 100 / portTICK_PERIOD_MS))
         {
             printf(msg.log_msg);
+        }
+
+        int cb = read(stdin_fileno, &msg, CONFIG_REPL_MUX_MAX_LOG_MSG);
+        if(cb > 0)
+        {
+            run(msg.log_msg);
         }
     }
 
@@ -141,8 +260,8 @@ static void net_consumer_task_func(void* args)
             if(recv_len > 0)
             {
                 msg.log_msg[recv_len-1] = 0;
-                ESP_LOGI(TAG, "recieved cmd over net: %s", msg.log_msg);
-                ESP_ERROR_CHECK_WITHOUT_ABORT(esp_console_run(msg.log_msg, &recv_len));
+                // ESP_LOGI(TAG, "recieved cmd over net: %s", msg.log_msg);
+                run(msg.log_msg);
             }
             else if(recv_len == 0)
             {
@@ -185,6 +304,24 @@ static int log_publisher(const char* string, va_list arg_list)
 // API Funcs
 //*****************************************************************************
 
+esp_err_t repl_mux_register(char* name, char* desc, cmd_func_t func)
+{
+    if(num_cmds == CONFIG_REPL_MUX_MAX_NUM_CMD)
+    {
+        ESP_LOGE(TAG, "Command Table Full");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    strncpy(cmd_list[num_cmds].name, name, CONFIG_REPL_MUX_NAME_LEN);
+    strncpy(cmd_list[num_cmds].desc, desc, CONFIG_REPL_MUX_DESC_LEN);
+    cmd_list[num_cmds].func = func;
+    num_cmds++;
+
+    ESP_LOGI(TAG, "Command Added %s (%d/%d)", name, num_cmds, CONFIG_REPL_MUX_MAX_NUM_CMD);
+
+    return ESP_OK;
+}
+
 esp_err_t repl_mux_init(void)
 {
     uint8_t i;
@@ -217,6 +354,8 @@ esp_err_t repl_mux_init(void)
 
     
     esp_log_set_vprintf(log_publisher);
+
+    ESP_ERROR_CHECK(repl_mux_register("help", "print desc of each cmd", &do_help));
 
     return ESP_OK;
 }
