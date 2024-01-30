@@ -7,16 +7,4 @@ menu "Global ESP 32 Deluminator Config"
     config SPIFFS_MAX_FILES
         int "max files on FS"
         default 32
-
-    config REPL_PROMPT_STR
-        string "REPL prompt string"
-        default "$~>"
-
-    config MAX_CMD_LINE_LEN
-        int "Max Command Line Len"
-        default 80
-
-    config MAX_HISTORY_LEN
-        int "Max History Length"
-        default 4096
 endmenu

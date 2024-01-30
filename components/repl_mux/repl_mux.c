@@ -3,7 +3,6 @@
 
 #include "esp_system.h"
 #include "esp_log.h"
-#include "driver/uart.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -146,10 +145,9 @@ static void uart_consumer_task_func(void* args)
 {
     repl_mux_message_t msg;
 
-    int stdin_fileno = fileno(stdin);
-    int flags = fcntl(stdin_fileno, F_GETFL);
-    flags |= O_NONBLOCK;
-    fcntl(stdin_fileno, F_SETFL, flags);
+    int fd  = fileno(stdin);
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
     queue_active[UART_Q] = 1;
     while(1)
@@ -159,11 +157,13 @@ static void uart_consumer_task_func(void* args)
             printf(msg.log_msg);
         }
 
-        int cb = read(stdin_fileno, &msg, CONFIG_REPL_MUX_MAX_LOG_MSG);
-        if(cb > 0)
+        int num_r = read(fd, msg.log_msg, CONFIG_REPL_MUX_MAX_LOG_MSG);
+        if(num_r > 0)
         {
+            msg.log_msg[num_r-1] = 0;
             run(msg.log_msg);
         }
+
     }
 
     // Always alive
@@ -300,6 +300,16 @@ static int log_publisher(const char* string, va_list arg_list)
     return 0;
 }
 
+static void net_publisher(void* args)
+{
+
+}
+
+static void uart_publisher(void* args)
+{
+    
+}
+
 //*****************************************************************************
 // API Funcs
 //*****************************************************************************
@@ -336,7 +346,7 @@ esp_err_t repl_mux_init(void)
 
     TaskHandle_t h;
     xTaskCreate(uart_consumer_task_func,
-                "UART repl mux", 
+                "UART Out", 
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 
                 CONFIG_REPL_MUX_CONSUMER_PRIO,
@@ -344,7 +354,7 @@ esp_err_t repl_mux_init(void)
     assert(h);
 
     xTaskCreate(net_consumer_task_func,
-                "NET repl mux",
+                "NET Out",
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 
                 CONFIG_REPL_MUX_CONSUMER_PRIO,

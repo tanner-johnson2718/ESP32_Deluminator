@@ -74,10 +74,6 @@ static const char* TAG = "MAIN";
 
 #define MOUNT_PATH CONFIG_SPIFFS_MOUNT_PATH
 #define MAX_FILES CONFIG_SPIFFS_MAX_FILES
-#define PROMPT_STR CONFIG_REPL_PROMPT_STR
-#define MAX_CMD_LINE_LEN CONFIG_MAX_CMD_LINE_LEN 
-#define HISTORY_PATH MOUNT_PATH "/history.txt"
-#define MAX_HISTORY_LEN CONFIG_MAX_HISTORY_LEN
 
 static void initialize_filesystem(void);
 static void initialize_nvs(void);

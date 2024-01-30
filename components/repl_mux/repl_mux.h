@@ -14,19 +14,17 @@
 //
 // The flow looks something like this)
 //
-//                                                   socket      run cmd
-//             esp_log_set_vprintf                    |  ^          ^
-//                    |                               V  |          |
-//                    |                 |-------|    |-----------------|
-//                    V            |--->| Net Q |--->| REPL TCP Server |
-//             |---------------|---|    |-------|    |-----------------|
+//                                              
+//             esp_log_set_vprintf
+//                    |                     
+//                    |                 |-------|    |--------------|
+//                    V            |--->| Net Q |--->| Net Consumer |--> Sock Send
+//             |---------------|---|    |-------|    |--------------|
 // ESP_LOG --->| log_publisher |
-//             |---------------|---|    |--------|    |----------------|
-//                                 |--->| UART Q |--->|  REPL SERIAL   |
-//                                      |--------|    |----------------|
-//                                                      | ^         |
-//                                                      V |         V
-//                                                     UART      run cmd
+//             |---------------|---|    |--------|    |---------------|
+//                                 |--->| UART Q |--->| UART Consumer |--> Printf
+//                                      |--------|    |---------------|
+
 //
 // WARNING) Unlike other modules we do not have a global lock as it assumed
 // that we are not processing input in a multithreaded environment. All 
