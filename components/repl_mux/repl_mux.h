@@ -8,9 +8,10 @@
 //    * UART
 //    * Wifi / TCP
 //
-// Each medium also has an input handler that reads input and passes it to the
-// console module where all registered commands are. If the input is a valid
-// command then the command is ran.
+// Each medium also has an input handler that reads input. The input is
+// compared to a table of registered commands. If the input matches then the
+// command is run and the associated command line args are passed to the 
+// command.
 //
 // The flow looks something like this)
 //
@@ -24,13 +25,15 @@
 //             |---------------|---|    |--------|    |---------------|
 //                                 |--->| UART Q |--->| UART Consumer |--> Printf
 //                                      |--------|    |---------------|
-
 //
-// WARNING) Unlike other modules we do not have a global lock as it assumed
-// that we are not processing input in a multithreaded environment. All 
-// register calls should be done prior to even calling repl_mux_init. Moreover
-// we shouldnt be recieving input from both the uart and the tcp server at the
-// same time.
+// 
+// |------------|
+// | Net Input  |---|
+// |------------|   |
+//                  |---> Command Table Look Up ---> Parse args ---> cmd(argc, argv)
+// |------------|   |
+// | UART Input |---|
+// |------------|
 //
 // **NOTE**
 //    - printf only sends traffic over UART

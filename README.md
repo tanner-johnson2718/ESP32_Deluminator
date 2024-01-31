@@ -79,7 +79,6 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 * [Rotary encoder](https://www.amazon.com/dp/B07F26CT6B?psc=1&ref=ppx_yo2ov_dt_b_product_details)
 
 ## TODO
-* move eapol to it own modual
 * 802.11 data pkt parsing
 * wsl bypassser into auto deauth agent
 * look into exactly what is happining when we crack

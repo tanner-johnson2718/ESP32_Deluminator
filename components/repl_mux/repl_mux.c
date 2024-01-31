@@ -59,7 +59,12 @@ static int build_argv(char* input, char** argv)
 
         if(input[i] == ' ')
         {
-            while(input[i] == ' ') {++i;}
+            
+            while(input[i] == ' ') 
+            {
+                input[i] = 0;
+                ++i;
+            }
 
             argv[argc] = start;
             ++argc;
@@ -363,8 +368,8 @@ esp_err_t repl_mux_register(char* name, char* desc, cmd_func_t func)
         return ESP_ERR_INVALID_STATE;
     }
 
-    strncpy(cmd_list[num_cmds].name, name, CONFIG_REPL_MUX_NAME_LEN);
-    strncpy(cmd_list[num_cmds].desc, desc, CONFIG_REPL_MUX_DESC_LEN);
+    strncpy(cmd_list[num_cmds].name, name, CONFIG_REPL_MUX_NAME_LEN-1);
+    strncpy(cmd_list[num_cmds].desc, desc, CONFIG_REPL_MUX_DESC_LEN-1 );
     cmd_list[num_cmds].func = func;
     num_cmds++;
 
