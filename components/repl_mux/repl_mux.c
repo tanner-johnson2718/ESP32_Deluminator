@@ -3,10 +3,13 @@
 
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_vfs_dev.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "linenoise/linenoise.h"
+#include "driver/uart.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -28,6 +31,8 @@ static const char* TAG = "REPL MUX";
 
 static uint8_t queue_active[CONFIG_REPL_MUX_N_QUEUES] = {0};
 static QueueHandle_t qs[CONFIG_REPL_MUX_N_QUEUES];
+static QueueHandle_t client_connected_notifier;
+static uint8_t client_discon = 1;
 
 static uint8_t num_cmds = 0;
 static cmd_t cmd_list[CONFIG_REPL_MUX_MAX_NUM_CMD];
@@ -141,13 +146,9 @@ static int do_help(int argc, char** argv)
 // UART Q Consumer 
 //*****************************************************************************
 
-static void uart_consumer_task_func(void* args)
+static void uart_consumer(void* args)
 {
     repl_mux_message_t msg;
-
-    int fd  = fileno(stdin);
-    int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
     queue_active[UART_Q] = 1;
     while(1)
@@ -157,16 +158,41 @@ static void uart_consumer_task_func(void* args)
             printf(msg.log_msg);
         }
 
-        int num_r = read(fd, msg.log_msg, CONFIG_REPL_MUX_MAX_LOG_MSG);
-        if(num_r > 0)
-        {
-            msg.log_msg[num_r-1] = 0;
-            run(msg.log_msg);
-        }
-
     }
+}
 
-    // Always alive
+static void uart_producer(void* args)
+{
+    const uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .source_clk = UART_SCLK_REF_TICK,
+    };
+
+    int channel = 0;
+
+    uart_param_config(channel, &uart_config);
+    uart_driver_install(channel, 256, 0, 0, NULL, 0);
+    esp_vfs_dev_uart_use_driver(channel);
+
+    linenoiseSetMaxLineLen(CONFIG_REPL_MUX_MAX_LOG_MSG);
+    linenoiseSetDumbMode(1);
+    setvbuf(stdin, NULL, _IONBF, 0);
+
+    ESP_LOGI(TAG, "UART Input handelr thread launched");
+
+    while(1)
+    {
+        char* line = linenoise("> ");
+        if(line != NULL && strlen(line) > 0)
+        {
+            run(line);
+            free(line);
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
 }
 
 
@@ -224,12 +250,11 @@ static int accept_client(int listen_sock)
     return client_socket;
 }
 
-static void net_consumer_task_func(void* args)
+static void net_consumer(void* args)
 {
     repl_mux_message_t msg;
     int listen_sock = -1;
     int client_socket = -1;
-    int recv_len;
 
     // This is considered early init task. If it fails blow everything up
     listen_sock = create_listening_socket();
@@ -245,35 +270,61 @@ static void net_consumer_task_func(void* args)
         }
 
         queue_active[NET_Q] = 1;
-        while(1)
+        
+        client_discon = 0;
+        if(!xQueueSend(client_connected_notifier, &client_socket, 0))
+        {   
+            ESP_LOGE(TAG, "Failed to push on client_connected_notifier");
+        }
+
+        while(!client_discon)
         {
             while(xQueueReceive(qs[NET_Q], &msg, 100 / portTICK_PERIOD_MS))
             {
-                if(send(client_socket, msg.log_msg, strlen(msg.log_msg), 0) == 0)
+                if(send(client_socket, msg.log_msg, strlen(msg.log_msg), 0) <= 0)
                 {
                     ESP_LOGI(TAG, "client disonnected");
+                    client_discon = 1;
                     break;
                 }
             }
-
-            recv_len = recv(client_socket, &msg, CONFIG_REPL_MUX_MAX_LOG_MSG, MSG_DONTWAIT);
-            if(recv_len > 0)
-            {
-                msg.log_msg[recv_len-1] = 0;
-                // ESP_LOGI(TAG, "recieved cmd over net: %s", msg.log_msg);
-                run(msg.log_msg);
-            }
-            else if(recv_len == 0)
-            {
-                ESP_LOGI(TAG, "client disonnected");
-                break;
-            }
-
         }
 
         shutdown(client_socket, 0);
         close(client_socket);
         queue_active[NET_Q] = 0;
+    }
+}
+
+static void net_producer(void* args)
+{
+    int client_socket = -1;
+    repl_mux_message_t msg;
+
+    while(1)
+    {
+        client_socket = -1;
+        xQueueReceive(client_connected_notifier, &client_socket, portMAX_DELAY);
+        if(client_socket == -1)
+        {
+            continue;
+        }
+
+        while(!client_discon)
+        {
+            ssize_t recv_len = recv(client_socket, &msg, CONFIG_REPL_MUX_MAX_LOG_MSG, 0);
+            if(recv_len > 0)
+            {
+                msg.log_msg[recv_len-1] = 0;
+                run(msg.log_msg);
+            }
+            else if(recv_len <= 0)
+            {
+                ESP_LOGI(TAG, "client disconnected");
+                client_discon = 1;
+                break;
+            }
+        }
     }
 }
 
@@ -298,16 +349,6 @@ static int log_publisher(const char* string, va_list arg_list)
     }
 
     return 0;
-}
-
-static void net_publisher(void* args)
-{
-
-}
-
-static void uart_publisher(void* args)
-{
-    
 }
 
 //*****************************************************************************
@@ -344,8 +385,30 @@ esp_err_t repl_mux_init(void)
         }
     }
 
+    client_connected_notifier = xQueueCreate(1, sizeof(int));
+    if(client_connected_notifier == 0)
+    {
+        return ESP_ERR_NO_MEM;
+    }
+
     TaskHandle_t h;
-    xTaskCreate(uart_consumer_task_func,
+    xTaskCreate(uart_producer,
+            "UART In",
+            CONFIG_REPL_MUX_STACK_SIZE,
+            NULL,
+            CONFIG_REPL_MUX_CONSUMER_PRIO - 1,
+            &h);
+    assert(h);
+
+    xTaskCreate(net_producer,
+                "NET in",
+                CONFIG_REPL_MUX_STACK_SIZE,
+                NULL,
+                CONFIG_REPL_MUX_CONSUMER_PRIO - 1,
+                &h);
+    assert(&h);
+
+    xTaskCreate(uart_consumer,
                 "UART Out", 
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 
@@ -353,7 +416,7 @@ esp_err_t repl_mux_init(void)
                 &h);
     assert(h);
 
-    xTaskCreate(net_consumer_task_func,
+    xTaskCreate(net_consumer,
                 "NET Out",
                 CONFIG_REPL_MUX_STACK_SIZE, 
                 NULL, 

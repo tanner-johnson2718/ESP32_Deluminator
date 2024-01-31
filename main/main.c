@@ -141,7 +141,6 @@ void app_main(void)
     initialize_nvs();
     initialize_filesystem();
     init_wifi();
-    ESP_ERROR_CHECK(repl_mux_init());
 
     // Some misc system level repl functions defined below
     repl_mux_register("part_table", "Print the partition table", &do_part_table);
@@ -170,6 +169,7 @@ void app_main(void)
     repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
     repl_mux_register("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
+    ESP_ERROR_CHECK(repl_mux_init());
 }
 
 //*****************************************************************************
