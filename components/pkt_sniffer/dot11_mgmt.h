@@ -1,5 +1,6 @@
 #pragma once
 #include  <stdint.h>
+#include "dot11.h"
 
 //*****************************************************************************
 // MGMT Frame Header |
@@ -30,34 +31,10 @@
 // Tagged Params - Start immediatly after the fixed params and have a two byte
 // header of the form id, length
 //*****************************************************************************
-typedef struct 
-{
-    uint8_t version    : 2;
-    uint8_t type       : 2;
-    uint8_t sub_type   : 4;
-    uint8_t : 0;
-
-    uint8_t ds_status  : 2;
-    uint8_t more_frags : 1;
-    uint8_t retry      : 1;
-    uint8_t pwr_mgt    : 1;
-    uint8_t more_data  : 1;
-    uint8_t protect    : 1;
-    uint8_t ordered    : 1;
-    uint8_t : 0;
-
-    uint16_t duration;
-    uint8_t dest_mac[6];
-    uint8_t src_mac[6];
-    uint8_t ap_mac[6];
-    
-    uint16_t fragment_num : 4;
-    uint16_t sequence_num : 12;
-} mgmt_header_t;
 
 typedef struct
 {
-    mgmt_header_t mgmt_header;
+    dot11_header_t mgmt_header;
     uint8_t payload[];
 } mgmt_generic_t;
 
@@ -135,7 +112,7 @@ typedef struct {uint8_t mac[6];} fixed_param_current_mac_t;
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t                     mgmt_header;
+    dot11_header_t                     mgmt_header;
     fixed_param_capability_t         capabilities;
     fixed_param_listen_interval_t listen_interval;
     uint8_t                       tagged_params[];
@@ -157,7 +134,7 @@ typedef struct
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t              mgmt_header;
+    dot11_header_t              mgmt_header;
     fixed_param_capability_t  capabilities;
     fixed_param_status_code_t  status_code;
     fixed_param_aid_t                  aid;
@@ -179,7 +156,7 @@ typedef assoc_res_t reassoc_re_t;
 
 typedef struct
 {
-    mgmt_header_t mgmt_header;
+    dot11_header_t mgmt_header;
     uint8_t tagged_params[];
 } probe_req_t;
 
@@ -216,7 +193,7 @@ typedef struct
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t                     mgmt_header;
+    dot11_header_t                     mgmt_header;
     fixed_param_timestamp_t             timestamp;
     fixed_param_beacon_interval_t beacon_interval;
     fixed_param_capability_t         capabilities;
@@ -230,7 +207,7 @@ typedef probe_res_t beacon_t;
 // not through an AP. This packet notifies the recipent that the sender has
 // buffered data for it. It is just mgmt header with no body.
 //*****************************************************************************
-typedef mgmt_header_t atim_t;
+typedef dot11_header_t atim_t;
 
 //*****************************************************************************
 // Deauth and Disassoc - these frames are send to end either an association or
@@ -239,7 +216,7 @@ typedef mgmt_header_t atim_t;
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t mgmt_header;
+    dot11_header_t mgmt_header;
     fixed_param_reason_code_t reason_code;
 } disassoc_t;
 
@@ -260,7 +237,7 @@ typedef disassoc_t deauth_t;
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t mgmt_header;
+    dot11_header_t mgmt_header;
     fixed_param_capability_t capabilities;
     fixed_param_listen_interval_t listen_interval;
     fixed_param_current_mac_t current_ap_mac;
@@ -282,7 +259,7 @@ typedef struct
 //*****************************************************************************
 typedef struct
 {
-    mgmt_header_t mgmt_header;
+    dot11_header_t mgmt_header;
     fixed_param_capability_t capabilities;
     fixed_param_status_code_t status_code;
     fixed_param_aid_t aid;

@@ -205,8 +205,8 @@ static inline int8_t get_eapol_index(uint8_t* p, wifi_pkt_rx_ctrl_t* rx_ctrl)
     if((len> 0x22) && (p[0x20] == 0x88) && (p[0x21] == 0x8e))
     {
         // eapol
-        int16_t s = ((mgmt_header_t*) p)->sequence_num;
-        uint8_t ds = ((mgmt_header_t*) p)->ds_status;
+        int16_t s = ((dot11_header_t*) p)->sequence_num;
+        uint8_t ds = ((dot11_header_t*) p)->ds_status;
 
         if     (s == 0 && ds == 2) { return 0; }
         else if(s == 0 && ds == 1) { return 1; }

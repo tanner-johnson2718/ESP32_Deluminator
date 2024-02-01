@@ -80,13 +80,13 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
 
 ## TODO
 * 802.11 data pkt parsing
-* wsl bypassser into auto deauth agent
 * look into exactly what is happining when we crack
     * maybe make a python script for that
     * Only store pertinent eapol info
     * How do we decrypt traffic on a net
 * IP Logger
-* 3D printed case
 * Mem and Perf analysis
+* wsl bypassser into auto deauth agent
+* 3D printed case
 * Readme
 * Typical Attack Flow

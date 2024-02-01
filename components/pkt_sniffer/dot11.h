@@ -1,5 +1,4 @@
 #pragma once
-#include "dot11_mgmt.h"
 
 //*****************************************************************************
 // PKT Type and Subtype enums. We use these to classify packets.
@@ -61,3 +60,28 @@ typedef union
     mgmt_pkt_subtype_t mgmt_subtype;
     data_pkt_subtype_t data_subtype;
 } pkt_subtype_t;
+
+typedef struct 
+{
+    uint8_t version    : 2;
+    uint8_t type       : 2;
+    uint8_t sub_type   : 4;
+    uint8_t : 0;
+
+    uint8_t ds_status  : 2;
+    uint8_t more_frags : 1;
+    uint8_t retry      : 1;
+    uint8_t pwr_mgt    : 1;
+    uint8_t more_data  : 1;
+    uint8_t protect    : 1;
+    uint8_t ordered    : 1;
+    uint8_t : 0;
+
+    uint16_t duration;
+    uint8_t dest_mac[6];
+    uint8_t src_mac[6];
+    uint8_t ap_mac[6];
+    
+    uint16_t fragment_num : 4;
+    uint16_t sequence_num : 12;
+} dot11_header_t;

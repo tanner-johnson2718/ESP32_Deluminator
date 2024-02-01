@@ -18,7 +18,7 @@ static uint8_t _pkt_sniffer_running = 0;
 pkt_sniffer_filtered_src_t filtered_srcs[CONFIG_PKT_MAX_FILTERS];
 static SemaphoreHandle_t lock;
 
-int filter_match(uint8_t i, mgmt_header_t* hdr)
+int filter_match(uint8_t i, dot11_header_t* hdr)
 {
     uint8_t mask = (filtered_srcs[i].filter.type_bitmap);
     if(!(((uint8_t)1 << (uint8_t) hdr->type) & mask))
@@ -64,7 +64,7 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
         return;
     }
 
-    mgmt_header_t* hdr = (mgmt_header_t*) p->payload;
+    dot11_header_t* hdr = (dot11_header_t*) p->payload;
 
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
