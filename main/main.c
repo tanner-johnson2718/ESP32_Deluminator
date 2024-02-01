@@ -43,6 +43,7 @@
 #include "mac_logger.h"
 #include "wsl_bypasser.h"
 #include "repl_mux.h"
+#include "data_pkt_dumper.h"
 
 static const char* TAG = "MAIN";
 
@@ -109,6 +110,9 @@ static int do_pkt_sniffer_launch(int argc, char** argv);
 static int do_pkt_sniffer_kill(int argc, char** argv);
 static int do_pkt_sniffer_clear(int argc, char** argv);
 static int do_pkt_sniffer_launch_delayed(int argc, char** argv);
+static int do_PS_stats(int argc, char** argv);
+
+static int do_DPD_init(int argc, char** argv);
 
 static int do_tcp_file_server_kill(int argc, char** argv);
 static int do_tcp_file_server_launch(int argc, char** argv);
@@ -125,12 +129,16 @@ static int do_tcp_file_server_launch(int argc, char** argv);
 // disconnects from the AP. Only one client can conect to the AP at time thus
 // this ensures the disconnect event leaves the AP with no STAs
 //*****************************************************************************
-#define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
-#define EXAMPLE_ESP_WIFI_CHANNEL 1
-#define EXAMPLE_ESP_WIFI_PASS "abcd1234"
-#define EXAMPLE_MAX_STA_CONN 1
 
-static uint8_t delayed_launch = 0;  // contains channel when set
+#define USE_AP 0
+
+#if USE_AP
+    #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
+    #define EXAMPLE_ESP_WIFI_CHANNEL 1
+    #define EXAMPLE_ESP_WIFI_PASS "abcd1234"
+    #define EXAMPLE_MAX_STA_CONN 1
+    static uint8_t delayed_launch = 0;  // contains channel when set
+#endif
 
 static void init_wifi(void);
 
@@ -156,14 +164,20 @@ void app_main(void)
     repl_mux_register("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
-    repl_mux_register("pkt_sniffer_launch", "Launch pkt sniffer on all types", &do_pkt_sniffer_launch);
-    repl_mux_register("pkt_sniffer_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
-    repl_mux_register("pkt_sniffer_clear", "Clear the list of filters", &do_pkt_sniffer_clear);
+    repl_mux_register("PS_launch", "Launch pkt sniffer", &do_pkt_sniffer_launch);
+    repl_mux_register("PS_kill", "Kill pkt sniffer", &do_pkt_sniffer_kill);
+    repl_mux_register("PS_clear", "Clear the list of packet sniffer filters", &do_pkt_sniffer_clear);
+    repl_mux_register("PS_stats", "dump packer sniffer stats", &do_PS_stats);
+
+    #if USE_AP
     repl_mux_register("pkt_sniffer_launch_delayed", "Launch the pkt sniffer once client sta disconnected. Only run from TCP repl", &do_pkt_sniffer_launch_delayed);
+    #endif
+
     repl_mux_register("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
     repl_mux_register("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
     repl_mux_register("mac_logger_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
     repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
+    repl_mux_register("DPD_init", "Data Packet Dumper init and register", &do_DPD_init);
 
     // TCP File Server test driver repl functions
     repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
@@ -225,6 +239,7 @@ static void initialize_nvs(void)
 // Init Wifi Module
 //*****************************************************************************
 
+#if USE_AP
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
 {
@@ -246,56 +261,52 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         }
     }
 }
+#endif
 
 void init_wifi(void)
 {
-        // ESP NET IF init
-    esp_netif_t *sta_netif = NULL;
-    esp_netif_t *ap_netif = NULL;
     ESP_ERROR_CHECK(esp_netif_init());
-    sta_netif = esp_netif_create_default_wifi_sta();
-    ap_netif = esp_netif_create_default_wifi_ap();
-    assert(ap_netif);
-    assert(sta_netif);
-    
-    // Wifi early init config (RX/TX buffers etc)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // Handle dem wifi events on the default event loop
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &wifi_event_handler,
-                                                        NULL,
-                                                        NULL));
+    esp_netif_t *sta_netif = NULL;
+    sta_netif = esp_netif_create_default_wifi_sta();
+    assert(sta_netif);
+
+    #if USE_AP
+        esp_netif_t *ap_netif = NULL;
+        ap_netif = esp_netif_create_default_wifi_ap();
+        assert(ap_netif);
     
 
-    wifi_config_t wifi_config = {
-        .ap = {
-            .ssid = EXAMPLE_ESP_WIFI_SSID,
-            .ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID),
-            .channel = EXAMPLE_ESP_WIFI_CHANNEL,
-            .password = EXAMPLE_ESP_WIFI_PASS,
-            .max_connection = EXAMPLE_MAX_STA_CONN,
-            .authmode = WIFI_AUTH_WPA2_PSK,
-            .pmf_cfg = {
-                    .required = false,
+        // Handle dem wifi events on the default event loop
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                            ESP_EVENT_ANY_ID,
+                                                            &wifi_event_handler,
+                                                            NULL,
+                                                            NULL));
+
+        wifi_config_t wifi_config = {
+            .ap = {
+                .ssid = EXAMPLE_ESP_WIFI_SSID,
+                .ssid_len = strlen(EXAMPLE_ESP_WIFI_SSID),
+                .channel = EXAMPLE_ESP_WIFI_CHANNEL,
+                .password = EXAMPLE_ESP_WIFI_PASS,
+                .max_connection = EXAMPLE_MAX_STA_CONN,
+                .authmode = WIFI_AUTH_WPA2_PSK,
+                .pmf_cfg = {
+                        .required = false,
+                },
             },
-        },
-    };
+        };
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    #else
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    #endif
+    
     ESP_ERROR_CHECK(esp_wifi_start());
-
-    uint8_t mac[6];
-    ESP_ERROR_CHECK(esp_netif_get_mac(sta_netif, mac));
-    ESP_LOGI(TAG, "STA if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-
-    ESP_ERROR_CHECK(esp_netif_get_mac(ap_netif, mac));
-    ESP_LOGI(TAG, "AP if created -> %02x:%02x:%02x:%02x:%02x:%02x", 
-                mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 }
 
 //*****************************************************************************
@@ -386,6 +397,7 @@ static int do_pkt_sniffer_launch(int argc, char** argv)
     return 0;
 }
 
+#if USE_AP
 static int do_pkt_sniffer_launch_delayed(int argc, char** argv)
 {
     if(argc != 2)
@@ -399,6 +411,7 @@ static int do_pkt_sniffer_launch_delayed(int argc, char** argv)
     return 0;
 
 }
+#endif
 
 static int do_pkt_sniffer_kill(int argc, char** argv)
 {
@@ -410,6 +423,41 @@ static int do_pkt_sniffer_clear(int argc, char** argv)
 {
     ESP_ERROR_CHECK_WITHOUT_ABORT(pkt_sniffer_clear_filter_list());
     return 0 ;
+}
+
+static int do_PS_stats(int argc, char** argv)
+{
+    pkt_sniffer_stats_t* stats = pkt_sniffer_get_stats();
+
+    esp_log_write(ESP_LOG_INFO, "", "Total      = %lld\n", stats->num_pkt_total);
+    esp_log_write(ESP_LOG_INFO, "", "Data       = %lld\n", stats->num_data_pkt);
+    esp_log_write(ESP_LOG_INFO, "", "MGMT       = %lld\n", stats->num_mgmt_pkt);
+
+    uint8_t i;
+    for(i = 0; i < 16; ++i)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "Data[%02d] = %lld\n", i, stats->num_data_subtype[i] );
+    }
+
+    for(i = 0; i < 16; ++i)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "MGMT[%02d] = %lld\n", i, stats->num_mgmt_subtype[i] );
+    }
+
+    return 0;
+}
+
+static int do_DPD_init(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "usage DPD_init <pkt sub type base 10> (see dot11.h)");
+        return -1;
+    }
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(data_pkt_dumper_init((data_pkt_subtype_t) strtol(argv[1], NULL,10)));
+
+    return 0;
 }
 
 //*****************************************************************************

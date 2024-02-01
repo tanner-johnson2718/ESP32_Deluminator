@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 //*****************************************************************************
 // PKT Type and Subtype enums. We use these to classify packets.
@@ -78,9 +79,9 @@ typedef struct
     uint8_t : 0;
 
     uint16_t duration;
-    uint8_t dest_mac[6];
-    uint8_t src_mac[6];
-    uint8_t ap_mac[6];
+    uint8_t addr1[6];
+    uint8_t addr2[6];
+    uint8_t addr3[6];
     
     uint16_t fragment_num : 4;
     uint16_t sequence_num : 12;

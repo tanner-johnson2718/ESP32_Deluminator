@@ -18,6 +18,8 @@ static uint8_t _pkt_sniffer_running = 0;
 pkt_sniffer_filtered_src_t filtered_srcs[CONFIG_PKT_MAX_FILTERS];
 static SemaphoreHandle_t lock;
 
+pkt_sniffer_stats_t stats = { 0 };
+
 int filter_match(uint8_t i, dot11_header_t* hdr)
 {
     uint8_t mask = (filtered_srcs[i].filter.type_bitmap);
@@ -33,10 +35,11 @@ int filter_match(uint8_t i, dot11_header_t* hdr)
     }
     else if(hdr->type == PKT_DATA)
     {
-        mask16 = filtered_srcs[i].filter.mgmt_subtype_bitmap;
+        mask16 = filtered_srcs[i].filter.data_subtype_bitmap;
     }
     else
     {
+        ESP_LOGE(TAG, "NOT GOOD");
         return 0;
     }
 
@@ -65,6 +68,23 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     }
 
     dot11_header_t* hdr = (dot11_header_t*) p->payload;
+    // esp_log_write(ESP_LOG_INFO, "", "st = %d\n", hdr->sub_type);
+
+    stats.num_pkt_total++;
+    if (hdr->type == (uint8_t) PKT_MGMT) 
+    { 
+        stats.num_mgmt_pkt++; 
+        stats.num_mgmt_subtype[(uint8_t)hdr->sub_type]++;
+    }
+    else if(hdr->type == (uint8_t) PKT_DATA) 
+    { 
+        stats.num_data_pkt++; 
+        stats.num_data_subtype[(uint8_t)hdr->sub_type]++;
+    }
+    else
+    {
+        ESP_LOGE(TAG, "NO GOOD BE HERE");
+    }
 
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
@@ -256,4 +276,9 @@ esp_err_t pkt_sniffer_kill(void)
     ESP_LOGI(TAG, "Killed");
     _pkt_sniffer_running = 0;
     return esp_wifi_set_promiscuous(0);
+}
+
+pkt_sniffer_stats_t* pkt_sniffer_get_stats(void)
+{
+    return &stats;
 }

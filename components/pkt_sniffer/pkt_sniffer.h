@@ -54,6 +54,17 @@ typedef struct
     pkt_sniffer_cb_t cb;
 } pkt_sniffer_filtered_src_t;
 
+typedef struct 
+{
+    uint64_t num_pkt_total;
+    uint64_t num_data_pkt;
+    uint64_t num_mgmt_pkt;
+    uint64_t num_data_subtype[16];
+    uint64_t num_mgmt_subtype[16];
+} pkt_sniffer_stats_t;
+
+pkt_sniffer_stats_t* pkt_sniffer_get_stats(void);
+
 //*****************************************************************************
 // Returns) 1 if running 0 else
 //*****************************************************************************
