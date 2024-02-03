@@ -42,6 +42,11 @@ typedef struct
     uint8_t type_bitmap;
     uint16_t mgmt_subtype_bitmap;
     uint16_t data_subtype_bitmap;
+    uint8_t addr_active_bitmap;
+    uint8_t addr1_match[6];
+    uint8_t addr2_match[6];
+    uint8_t addr3_match[6];
+    uint8_t addrANY_match[6];
 }  pkt_filter_t;
 
 typedef void (*pkt_sniffer_cb_t)(void* pkt, 
@@ -109,6 +114,21 @@ esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f,
                                        pkt_type_t type, 
                                        pkt_subtype_t subtype);
 
+                            
+//*****************************************************************************
+// pkt_sniffer_add_mac_match) Add a must mac addr to the passed filter.
+//
+// f - pointer to a filtered src type
+// addr_num - 1,2,3 or 5 depending on which addr in the dot11 header one wants
+//            to add exact match too. If 5, then will try to macth the passed
+//            mac to any of addr1-3 in pkts
+// mac - the mac addr
+//
+// Returns) ESP_OK if all goodm else invalid arg
+//*****************************************************************************
+esp_err_t pkt_sniffer_add_mac_match(pkt_sniffer_filtered_src_t* f, 
+                                    uint8_t addr_num, 
+                                    uint8_t* mac);
 
 //*****************************************************************************
 // pkt_sniffer_launch) Given a specific channel and start the pkt_sniffer

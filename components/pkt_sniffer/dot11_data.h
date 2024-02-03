@@ -4,19 +4,22 @@
 //*****************************************************************************
 // Data Frame Header |
 // -------------------
-// Normal MGMT Header
-// QoS Control?
+// Normal MGMT Header  but if toDS == fromDS == 1, them a 4 addr appears in the
+// header. We explicitly reject these packets as they indicate an IBSS set up.
+//
+// QoS Control -> if bit 4 of data subtype set
+// HTC field!!??
 // CCMP paramteres?
-// Optional 4th addr iff toDS == 1 && fromDS == 1
-// Assume that all traffic here is non IBSS
+//
 //*****************************************************************************
+
 
 typedef struct
 {
     uint8_t tid:4;
-    uint8_t ack_policy:2;
     uint8_t eosp:1;
-    uint8_t res:1
+    uint8_t ack_policy:2;
+    uint8_t amdsu_present:1
     uint8_t : 0;
 
     uint8_t interpeted_byte;

@@ -48,6 +48,39 @@ int filter_match(uint8_t i, dot11_header_t* hdr)
         return 0;
     }
 
+    uint8_t j;
+    if(filtered_srcs[i].filter.addr_active_bitmap & 0x1)
+    {
+        for(j = 0; j < 6; ++j)
+        {
+            if(filtered_srcs[i].filter.addr1_match[j] != hdr->addr1[j])
+            {
+                return 0;
+            }
+        }
+    }
+    if((filtered_srcs[i].filter.addr_active_bitmap >> 1) & 0x1)
+    {
+        for(j = 0; j < 6; ++j)
+        {
+            if(filtered_srcs[i].filter.addr2_match[j] != hdr->addr2[j])
+            {
+                return 0;
+            }
+        }
+    }
+    if((filtered_srcs[i].filter.addr_active_bitmap >> 2) & 0x1)
+    {
+        for(j = 0; j < 6; ++j)
+        {
+            if(filtered_srcs[i].filter.addr3_match[j] != hdr->addr3[j])
+            {
+                return 0;
+            }
+        }
+    }
+
+
     return 1;
 }
 
@@ -68,7 +101,6 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     }
 
     dot11_header_t* hdr = (dot11_header_t*) p->payload;
-    // esp_log_write(ESP_LOG_INFO, "", "st = %d\n", hdr->sub_type);
 
     stats.num_pkt_total++;
     if (hdr->type == (uint8_t) PKT_MGMT) 
@@ -188,6 +220,41 @@ esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f,
 
     return ESP_OK;
 }
+
+esp_err_t pkt_sniffer_add_mac_match(pkt_sniffer_filtered_src_t* f, 
+                                    uint8_t addr_num, 
+                                    uint8_t* mac)
+{
+
+    uint8_t* dest;
+    if(addr_num == 1)
+    {   
+        dest = f->filter.addr1_match;
+    }
+    else if(addr_num == 2)
+    {
+        dest = f->filter.addr2_match;
+    }
+    else if(addr_num == 3)
+    {
+        dest = f->filter.addr3_match;
+    }
+    else if(addr_num == 5)
+    {
+        dest = f->filter.addrANY_match;
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Invalid addr num");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    f->filter.addr_active_bitmap |= (1 << (addr_num-1));
+    memcpy(dest, mac, 6);
+
+    return ESP_OK;
+}
+
 
 esp_err_t pkt_sniffer_add_filter(pkt_sniffer_filtered_src_t* f)
 {

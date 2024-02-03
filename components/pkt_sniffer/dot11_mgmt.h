@@ -251,17 +251,17 @@ typedef struct
 // later in the process. This packet is of subtype 11 and has the following
 // fixed fields.
 //
-// |--------------------------------------------|
-// | Capabilities info | Status Code | Assoc ID |
-// |--------------------------------------------|
+// |------------------------------------|
+// | auth algo | Auth Seq | Status Code |
+// |------------------------------------|
 //
 // It should also include a supported rates tagged param
 //*****************************************************************************
 typedef struct
 {
     dot11_header_t mgmt_header;
-    fixed_param_capability_t capabilities;
+    fixed_param_auth_algo_t auth_algo;
+    fixed_param_auth_trans_seq_t auth_seq;
     fixed_param_status_code_t status_code;
-    fixed_param_aid_t aid;
     uint8_t tagged_params[];
 } auth_t;

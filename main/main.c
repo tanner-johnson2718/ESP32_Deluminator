@@ -170,12 +170,12 @@ void app_main(void)
     repl_mux_register("PS_stats", "dump packer sniffer stats", &do_PS_stats);
 
     #if USE_AP
-    repl_mux_register("pkt_sniffer_launch_delayed", "Launch the pkt sniffer once client sta disconnected. Only run from TCP repl", &do_pkt_sniffer_launch_delayed);
+    repl_mux_register("PS_launch_delayed", "Launch the pkt sniffer once client sta disconnected. Only run from TCP repl", &do_pkt_sniffer_launch_delayed);
     #endif
 
-    repl_mux_register("mac_logger_dump", "dump mac data", &do_mac_logger_dump);
-    repl_mux_register("mac_logger_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
-    repl_mux_register("mac_logger_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
+    repl_mux_register("ML_dump", "dump mac data", &do_mac_logger_dump);
+    repl_mux_register("ML_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
+    repl_mux_register("ML_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
     repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
     repl_mux_register("DPD_init", "Data Packet Dumper init and register", &do_DPD_init);
 
@@ -351,7 +351,7 @@ static int do_mac_logger_init(int argc, char** argv)
 static int do_mac_logger_dump(int argc, char** argv)
 {
     uint8_t i, j, n;
-    ap_summary_t ap;
+    ap_t ap;
     sta_t sta;
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap_list_len(&n));
@@ -362,12 +362,11 @@ static int do_mac_logger_dump(int argc, char** argv)
         esp_log_write(ESP_LOG_INFO,"", MACSTR"\n", MAC2STR(ap.bssid));
         esp_log_write(ESP_LOG_INFO,"", "Channel = %d\n", ap.channel);
         esp_log_write(ESP_LOG_INFO,"", "RSSI = %d\n", ap.rssi);
-        esp_log_write(ESP_LOG_INFO,"", "EAPOL Written to disk = %d\n", ap.eapol_written_out);
         esp_log_write(ESP_LOG_INFO,"", "Num Stas = %d\n", ap.num_assoc_stas);
 
         for(j = 0; j < ap.num_assoc_stas; ++j)
         {
-            ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_sta(i,j,&sta));
+            sta = ap.stas[j];
             esp_log_write(ESP_LOG_INFO, "", "   "MACSTR" %d\n", MAC2STR(sta.mac), sta.rssi);
         }
 

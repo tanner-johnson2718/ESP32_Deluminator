@@ -2,7 +2,9 @@
 #include <stdint.h>
 
 //*****************************************************************************
-// PKT Type and Subtype enums. We use these to classify packets.
+// PKT Type and Subtype enums. We use these to classify packets. For now this
+// is only for DATA and MGMT type frames. Control Frames use a different
+// generic header
 //*****************************************************************************
 
 typedef enum 

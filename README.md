@@ -86,7 +86,6 @@ Our initial prototypa had an lcd and rotary encoder. The code for this is archiv
     * How do we decrypt traffic on a net
 * IP Logger
 * Mem and Perf analysis
-* wsl bypassser into auto deauth agent
 * 3D printed case
 * Readme
 * Typical Attack Flow
