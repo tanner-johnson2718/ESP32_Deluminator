@@ -23,6 +23,7 @@
 
 #pragma once
 #include "dot11.h"
+#include "driver/gptimer.h"
 
 //*****************************************************************************
 // We define a structure that allows one to specifiy which type and sub type
@@ -61,6 +62,7 @@ typedef struct
     uint64_t num_mgmt_pkt;
     uint64_t num_data_subtype[16];
     uint64_t num_mgmt_subtype[16];
+    gptimer_handle_t timer;
 } pkt_sniffer_stats_t;
 
 pkt_sniffer_stats_t* pkt_sniffer_get_stats(void);

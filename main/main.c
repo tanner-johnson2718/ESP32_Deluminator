@@ -1,5 +1,5 @@
 // This is the starting point for the esp32 deluminator. The main module here
-// inits all the important esp32 idf subsystems. These are)
+// inits all the important esp32 idf subsystems that we use. These are)
 //
 //    * Flash memory w/ spiffs file system to store files
 //    * Flash memory w/ NVS storage for the wifi system
@@ -443,6 +443,10 @@ static int do_PS_stats(int argc, char** argv)
     {
         esp_log_write(ESP_LOG_INFO, "", "MGMT[%02d] = %lld\n", i, stats->num_mgmt_subtype[i] );
     }
+
+    uint64_t count;
+    ESP_ERROR_CHECK(gptimer_get_raw_count(stats->timer, &count));
+    esp_log_write(ESP_LOG_INFO, "", "Time = %llu\n", count / (1000*1000));
 
     return 0;
 }

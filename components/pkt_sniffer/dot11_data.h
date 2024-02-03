@@ -4,6 +4,11 @@
 //*****************************************************************************
 // Data Frame Header |
 // -------------------
+// Normal MGMT Header
+// QoS Control?
+// CCMP paramteres?
+// Optional 4th addr iff toDS == 1 && fromDS == 1
+// Assume that all traffic here is non IBSS
 //*****************************************************************************
 
 typedef struct
@@ -17,16 +22,12 @@ typedef struct
     uint8_t interpeted_byte;
 } qos_ctrl_t;
 
-// Normal MGMT Header
-// QoS Control?
-// CCMP paramteres?
-// Optional 4th addr iff toDS == 1 && fromDS == 1
 
 // PKT_DATA_DATA           = b0000 (subtype)
 
 //*****************************************************************************
-// PKT_NULL subtype = b0100 - its sole purpose is to carry the power management
-// to let an AP know an STA's power management state
+// PKT_NULL subtype = b0100 = 4- its sole purpose is to carry the power 
+// management to let an AP know an STA's power management state. 
 //*****************************************************************************
 typedef dot11_header_t data_null_t;
 

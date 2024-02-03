@@ -86,6 +86,14 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
         ESP_LOGE(TAG, "NO GOOD BE HERE");
     }
 
+    // We implicitly assume in our dot11_data.h structs that we never see STA
+    // to STA or IBSS traffic. This traffic is identified by toDS = fromDS = 1
+    // Log warning if we see this
+    if(hdr->ds_status == 3)
+    {
+        ESP_LOGE(TAG, "Warning IBSS traffic captured");
+    }
+
     uint8_t i;
     for(i = 0; i < num_filters; ++i)
     {
@@ -107,6 +115,12 @@ void _pkt_sniffer_init(void)
 {
     lock = xSemaphoreCreateBinary();
     assert(xSemaphoreGive(lock) == pdTRUE);
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1 * 1000* 1000,
+    };
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &stats.timer));
     inited = 1;
 }
 
@@ -117,6 +131,11 @@ void _pkt_sniffer_init(void)
 uint8_t pkt_sniffer_is_running(void)
 {
     return _pkt_sniffer_running;
+}
+
+pkt_sniffer_stats_t* pkt_sniffer_get_stats(void)
+{
+    return &stats;
 }
 
 esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f, 
@@ -210,6 +229,13 @@ esp_err_t pkt_sniffer_clear_filter_list(void)
 
     ESP_LOGI(TAG, "Filtered CB List Cleared");
 
+    stats.num_pkt_total = 0;
+    stats.num_data_pkt = 0;
+    stats.num_mgmt_pkt = 0;
+    memset(stats.num_data_subtype, 0, sizeof(uint64_t)*16);
+    memset(stats.num_mgmt_subtype, 0, sizeof(uint64_t)*16);
+    ESP_ERROR_CHECK(gptimer_set_raw_count(stats.timer, 0));
+
     return ESP_OK;
 }
 
@@ -256,6 +282,8 @@ esp_err_t pkt_sniffer_launch(uint8_t channel)
         return e;
     }
 
+    ESP_ERROR_CHECK(gptimer_enable(stats.timer));
+    ESP_ERROR_CHECK(gptimer_start(stats.timer));
     _pkt_sniffer_running = 1;
 
     ESP_LOGI(TAG, "Launched with %d/%d filters", num_filters, CONFIG_PKT_MAX_FILTERS);
@@ -273,12 +301,10 @@ esp_err_t pkt_sniffer_kill(void)
         return ESP_ERR_INVALID_STATE;
     }
 
+    ESP_ERROR_CHECK(gptimer_stop(stats.timer));
+    ESP_ERROR_CHECK(gptimer_disable(stats.timer));
+    
     ESP_LOGI(TAG, "Killed");
     _pkt_sniffer_running = 0;
     return esp_wifi_set_promiscuous(0);
-}
-
-pkt_sniffer_stats_t* pkt_sniffer_get_stats(void)
-{
-    return &stats;
 }
