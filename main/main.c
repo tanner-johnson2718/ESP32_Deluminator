@@ -1,3 +1,7 @@
+//*****************************************************************************
+//
+// ESP 32 Deluminator
+//
 // This is the starting point for the esp32 deluminator. The main module here
 // inits all the important esp32 idf subsystems that we use. These are)
 //
@@ -13,16 +17,50 @@
 //    * PKT Sniffer - Adds a layer extra filtering on top of the existing 
 //                    promiscious wifi mode. Allows us to multiplex packets
 //                    and have serveral services processing pkts they are
-//                    intersted in.
+//                    intersted in. Also gives us structs to map onto pkts so
+//                    that other components are recving framed packets.
+//
 //    * MAC Logger - Sits on top of PKT Sniffer and logs all STAs, APs, and
-//                   their association. Will listen for WPA2 handshakes and
-//                   dump them to disk
-//    * WSL Bypasser - Got from homie online (see component for details). 
-//                     Allows us to send deauth pkts posing as a differnt AP
+//                   their association. Maintains this and AP meta data in an
+//                   in RAM buffer
+//
 //    * TCP File Server - Serves up the WPA2 handshake packets stored in flash
-//                        to requestors over the AP.
+//                        to requestors over the AP. The file server can be
+//                        accessed at 192.168.4.1:420
+//
 //    * REPL MUX - Provides multiplexing of logging and input to the repl. Also
 //                 provides command table (i.e. our own version of esp console)
+//                 This launchs 4 threads. One each for UART in, UART out, Net
+//                 in, Net out. The endpoint for the Net repl is a TCP server
+//                 bound to 192.168.4.1:421
+//
+//*****************************************************************************
+
+
+//*****************************************************************************
+// Coding Standard
+//
+// (1) All component API functions will return `esp_err_t`
+// (2) All returns from component API functions will be handled via 
+//     ESP_ERROR_CHECK or ESP_ERROR_CHECK_WITHOUT_ABORT
+// (3) All components will have both implementation and theory doc in the header
+// (4) All component API functions will have a summary describing their execution 
+//     logic, a description of their input args with possible values, and all
+//     possible return values and their meaning.
+// (5) All component API functions **shall** start with the name of the component
+// (6) Completely Static memory allocation
+// (7) All config should be exported via a Kconfig param
+//
+// |-----------------------------------------------------------|
+// | Component       | (1) | (2) | (3) | (4) | (5) | (6) | (7) |
+// | --------------- | --- | --- | --- | --- | --- | --- | --- |
+// | mac logger      |  X  |  X  |  X  |  X  |  X  |     |     |
+// | pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |     |
+// | tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |     |
+// | repl_mux        |  X  |  X  |  X  |  X  |  X  |     |  X  |
+// |-----------------------------------------------------------|
+//
+//*****************************************************************************
 
 #include <stdio.h>
 #include <dirent.h>
@@ -361,6 +399,9 @@ static int do_mac_logger_dump(int argc, char** argv)
         esp_log_write(ESP_LOG_INFO,"", "%-20s\n", ap.ssid);
         esp_log_write(ESP_LOG_INFO,"", MACSTR"\n", MAC2STR(ap.bssid));
         esp_log_write(ESP_LOG_INFO,"", "Channel = %d\n", ap.channel);
+        esp_log_write(ESP_LOG_INFO,"", "Group Cipher = 0x%lx\n", ap.group_cipher_suite);
+        esp_log_write(ESP_LOG_INFO,"", "Pairwise Cipher = 0x%lx\n", ap.pairwise_cipher_suite);
+        esp_log_write(ESP_LOG_INFO,"", "Auth Key Manangement = 0x%lx\n", ap.auth_key_management);
         esp_log_write(ESP_LOG_INFO,"", "RSSI = %d\n", ap.rssi);
         esp_log_write(ESP_LOG_INFO,"", "Num Stas = %d\n", ap.num_assoc_stas);
 

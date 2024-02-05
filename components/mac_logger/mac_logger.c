@@ -5,7 +5,6 @@
 #include "mac_logger.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "esp_timer.h"
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
@@ -155,7 +154,7 @@ static inline void update_sta_rssi(uint8_t ap_index, uint8_t sta_index, int8_t r
     ap_list[ap_index].stas[sta_index].rssi = rssi;
 }
 
-static inline void create_ap(char* ssid, uint8_t ssid_len, uint8_t* bssid, uint8_t channel, int8_t rssi)
+static inline void create_ap(char* ssid, uint8_t ssid_len, uint8_t* bssid, uint8_t channel, int8_t rssi, uint8_t* gcipher, uint8_t* pcipher, uint8_t* auth_man)
 {
     if(ap_list_len >= CONFIG_MAC_LOGGER_MAX_APS)
     {
@@ -168,6 +167,9 @@ static inline void create_ap(char* ssid, uint8_t ssid_len, uint8_t* bssid, uint8
     memcpy(ap_list[ap_list_len].bssid, bssid, MAC_LEN);
     ap_list[ap_list_len].channel = channel;
     ap_list[ap_list_len].rssi = rssi;
+    memcpy(&(ap_list[ap_list_len].group_cipher_suite), gcipher, 4);
+    memcpy(&(ap_list[ap_list_len].pairwise_cipher_suite), pcipher, 4);
+    memcpy(&(ap_list[ap_list_len].auth_key_management), auth_man, 4);
     ap_list_len++;
 
     ESP_LOGI(TAG, "AP Added: %s (%d/%d)", ap_list[ap_list_len-1].ssid, ap_list_len, CONFIG_MAC_LOGGER_MAX_APS);
@@ -224,16 +226,21 @@ void parse_beacon_pkt(beacon_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
     if(index < 0)
     { 
         // search for the DS_param set in the tagged params to give the active
-        // channel of the AP
+        // channel of the AP. Also while we searching tagged params look for
+        // the rsn field
         uint8_t* end_ptr = ((uint8_t*)hdr) + (rx_ctrl->sig_len - 4);
         uint8_t* start_ptr = hdr->tagged_params + 2 + ssid_len;
+        uint8_t* rsn_ptr = NULL;
         uint8_t active_channel = 255;
         while(start_ptr < end_ptr)
         {
             if(start_ptr[0] == TAGGED_PARAM_DS_PARAM)
             {
                 active_channel = *(start_ptr+2);
-                break;
+            }
+            else if(start_ptr[0] == TAGGED_PARAM_RSN)
+            {
+                rsn_ptr = start_ptr;
             }
 
             start_ptr += start_ptr[1] + 2;
@@ -246,7 +253,30 @@ void parse_beacon_pkt(beacon_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
             return;
         }
 
-        create_ap(ssid, ssid_len, hdr->mgmt_header.addr3, active_channel, rx_ctrl->rssi);
+        if(rsn_ptr == NULL)
+        {
+            ESP_LOGE(TAG, "Couldnt find rsn info in beacon / probe ress");
+            _release_lock();
+            return;
+        }
+
+        uint8_t* gcipher = rsn_ptr + 4;
+        uint8_t pcipher_n = *(gcipher + 4);
+        uint8_t* pcipher = gcipher + 4 + 2;
+        uint8_t* auth_man = pcipher + (4*(pcipher_n)) + 2;
+        uint8_t auth_man_n = *(auth_man - 2);
+
+        if(pcipher_n > 1)
+        {
+            ESP_LOGI(TAG, "%s supports %d pairwise cipher suites", ssid, pcipher_n);
+        }
+
+        if(auth_man_n > 1)
+        {
+            ESP_LOGI(TAG, "%s supports %d pairwise cipher suites", ssid, auth_man_n);
+        }
+
+        create_ap(ssid, ssid_len, hdr->mgmt_header.addr3, active_channel, rx_ctrl->rssi, gcipher, pcipher, auth_man);
     }
     else
     {
@@ -284,12 +314,6 @@ void parse_data_pkt(dot11_header_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
         return;
     }
 
-    //esp_log_write(ESP_LOG_INFO, "", "%d\n", hdr->ds_status);
-    //esp_log_write(ESP_LOG_INFO, "", MACSTR"\n", MAC2STR(hdr->addr1));
-    //esp_log_write(ESP_LOG_INFO, "", MACSTR"\n", MAC2STR(hdr->addr2));
-    //esp_log_write(ESP_LOG_INFO, "", MACSTR"\n\n", MAC2STR(hdr->addr3));
-
-    
     find_ap(ap_mac, &ap_index);
     
     if(ap_index < 0)

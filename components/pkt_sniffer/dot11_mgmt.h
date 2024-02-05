@@ -91,7 +91,7 @@ typedef struct {uint8_t mac[6];} fixed_param_current_mac_t;
 #define TAGGED_PARAM_IBSS_DFS              41
 #define TAGGED_PARAM_ERP                   42
 #define TAGGED_PARAM_HT_CAPABILITES        45
-#define TAGGED_PARAM_RSN 48
+#define TAGGED_PARAM_RSN                   48
 #define TAGGED_PARAM_EXTENDED_SUPPORTED_RATES 50
 #define TAGGED_PARAM_EXTENDED_CAPABILITES 127
 
@@ -152,7 +152,6 @@ typedef assoc_res_t reassoc_re_t;
 //    - Supported Rates
 //    - Extended Supported Rates
 //*****************************************************************************
-#define PKT_PROBE_REQ_SUBTYPE 4
 
 typedef struct
 {

@@ -4,7 +4,7 @@
 //*****************************************************************************
 // Data Frame Header |
 // -------------------
-// Normal MGMT Header  but if toDS == fromDS == 1, them a 4 addr appears in the
+// Normal MGMT Header  but if toDS == fromDS == 1, then a 4 addr appears in the
 // header. We explicitly reject these packets as they indicate an IBSS set up.
 //
 // QoS Control -> if bit 4 of data subtype set

@@ -29,6 +29,9 @@ struct ap
     uint8_t bssid[MAC_LEN];
     uint8_t channel;
     int8_t rssi;
+    uint32_t group_cipher_suite;
+    uint32_t pairwise_cipher_suite;
+    uint32_t auth_key_management;
     uint8_t num_assoc_stas;
     sta_t stas[CONFIG_MAC_LOGGER_MAX_STAS];
 } typedef ap_t;
