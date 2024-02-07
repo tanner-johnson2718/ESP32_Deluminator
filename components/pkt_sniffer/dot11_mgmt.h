@@ -95,6 +95,24 @@ typedef struct {uint8_t mac[6];} fixed_param_current_mac_t;
 #define TAGGED_PARAM_EXTENDED_SUPPORTED_RATES 50
 #define TAGGED_PARAM_EXTENDED_CAPABILITES 127
 
+typedef struct
+{
+    uint8_t pre_auth_capable:1;
+    uint8_t no_pairwise_capabilities:1;
+    uint8_t ptksa_replay_couter_cap:2;
+    uint8_t gtksa_replay_counter_cap:2;
+    uint8_t mgmt_frame_protect_req:1;
+    uint8_t mgmt_frame_protect_cap:1;
+    uint8_t :0;
+
+    uint8_t joint_multiband_rsna:1;
+    uint8_t peerkey_enabled:1;
+    uint8_t res:3;
+    uint8_t extended_keyID:1;
+    uint8_t res0:2;
+    uint8_t :0;
+} rsn_cap_t;
+
 //*****************************************************************************
 // Assoc Request - This is part of the association process for an STA  
 // connecting to an AP. It is a mgmt frame of subtype 0 and It has the 

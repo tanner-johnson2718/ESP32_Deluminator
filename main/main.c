@@ -34,6 +34,11 @@
 //                 in, Net out. The endpoint for the Net repl is a TCP server
 //                 bound to 192.168.4.1:421
 //
+//    * EAPOL Logger - Sits on top of the packet sniffer after the mac logger
+//                     has done his business. You Pass an AP index to this comp
+//                     and will listen and save in ram each of the 6 packets
+//                     needed to capture a WPA2 handshake. 
+//
 //*****************************************************************************
 
 
@@ -58,6 +63,7 @@
 // | pkt_sniffer     |  X  |  X  |  X  |  X  |  X  |     |     |
 // | tcp_file_server |  X  |  X  |  X  |  X  |  X  |     |     |
 // | repl_mux        |  X  |  X  |  X  |  X  |  X  |     |  X  |
+// | eapol logger    |     |     |     |     |     |     |     |
 // |-----------------------------------------------------------|
 //
 //*****************************************************************************
@@ -79,9 +85,9 @@
 #include "pkt_sniffer.h"
 #include "tcp_file_server.h"
 #include "mac_logger.h"
-#include "wsl_bypasser.h"
 #include "repl_mux.h"
 #include "data_pkt_dumper.h"
+#include "eapol.h"
 
 static const char* TAG = "MAIN";
 
@@ -150,6 +156,9 @@ static int do_pkt_sniffer_clear(int argc, char** argv);
 static int do_pkt_sniffer_launch_delayed(int argc, char** argv);
 static int do_PS_stats(int argc, char** argv);
 
+static int do_eapol_logger_init(int argc, char** argv);
+static int do_eapol_logger_clear(int argc, char** argv);
+
 static int do_DPD_init(int argc, char** argv);
 
 static int do_tcp_file_server_kill(int argc, char** argv);
@@ -216,6 +225,9 @@ void app_main(void)
     repl_mux_register("ML_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
     repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
     repl_mux_register("DPD_init", "Data Packet Dumper init and register", &do_DPD_init);
+
+    repl_mux_register("EL_init", "Init the eapol logger, passing an index from ML", &do_eapol_logger_init);
+    repl_mux_register("EL_clear", "Init the eapol logger, passing an index from ML", &do_eapol_logger_clear);
 
     // TCP File Server test driver repl functions
     repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
@@ -375,7 +387,7 @@ static int do_send_deauth(int argc, char** argv)
     }
 
     esp_log_write(ESP_LOG_INFO, "","Deauthing "MACSTR" from "MACSTR"\n", MAC2STR(sta_mac), MAC2STR(ap_mac));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(wsl_bypasser_send_deauth_frame_targted(ap_mac, sta_mac));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_send_deauth_frame_targted(ap_mac, sta_mac));
 
     return 0;
 }
@@ -396,12 +408,14 @@ static int do_mac_logger_dump(int argc, char** argv)
     for(i = 0; i < n; ++i)
     {
         ESP_ERROR_CHECK_WITHOUT_ABORT(mac_logger_get_ap(i, &ap));
-        esp_log_write(ESP_LOG_INFO,"", "%-20s\n", ap.ssid);
+        esp_log_write(ESP_LOG_INFO,"", "%d) %-20s\n",i, ap.ssid);
         esp_log_write(ESP_LOG_INFO,"", MACSTR"\n", MAC2STR(ap.bssid));
         esp_log_write(ESP_LOG_INFO,"", "Channel = %d\n", ap.channel);
         esp_log_write(ESP_LOG_INFO,"", "Group Cipher = 0x%lx\n", ap.group_cipher_suite);
         esp_log_write(ESP_LOG_INFO,"", "Pairwise Cipher = 0x%lx\n", ap.pairwise_cipher_suite);
         esp_log_write(ESP_LOG_INFO,"", "Auth Key Manangement = 0x%lx\n", ap.auth_key_management);
+        esp_log_write(ESP_LOG_INFO,"", "PMF Req = %u\n", ap.rsn_cap.mgmt_frame_protect_req);
+        esp_log_write(ESP_LOG_INFO,"", "PMF Cap = %u\n", ap.rsn_cap.mgmt_frame_protect_cap);
         esp_log_write(ESP_LOG_INFO,"", "RSSI = %d\n", ap.rssi);
         esp_log_write(ESP_LOG_INFO,"", "Num Stas = %d\n", ap.num_assoc_stas);
 
@@ -503,6 +517,30 @@ static int do_DPD_init(int argc, char** argv)
 
     return 0;
 }
+
+//*****************************************************************************
+// EAPOL Logger
+//*****************************************************************************
+
+static int do_eapol_logger_init(int argc, char** argv)
+{
+    if(argc !=2)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "usage) EL <ap_index>\n");
+        return -1;
+    }
+    
+    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_init((uint8_t) strtol(argv[1], NULL,10)));
+
+    return 0;
+}
+
+static int do_eapol_logger_clear(int argc, char** argv)
+{
+    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_clear());
+    return 0;
+}
+
 
 //*****************************************************************************
 // FS repl funcs

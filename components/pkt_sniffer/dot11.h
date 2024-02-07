@@ -77,7 +77,7 @@ typedef struct
     uint8_t pwr_mgt    : 1;
     uint8_t more_data  : 1;
     uint8_t protect    : 1;
-    uint8_t ordered    : 1;
+    uint8_t htc        : 1;
     uint8_t : 0;
 
     uint16_t duration;

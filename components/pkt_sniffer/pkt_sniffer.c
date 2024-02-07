@@ -124,6 +124,16 @@ static void pkt_sniffer_cb(void* buff, wifi_promiscuous_pkt_type_t type)
     if(hdr->ds_status == 3)
     {
         ESP_LOGE(TAG, "Warning IBSS traffic captured");
+        assert(xSemaphoreGive(lock) == pdTRUE);
+        return;
+    }
+
+
+    if(hdr->htc)
+    {
+        ESP_LOGE(TAG, "HTC packet captured");
+        assert(xSemaphoreGive(lock) == pdTRUE);
+        return;
     }
 
     uint8_t i;
@@ -238,10 +248,6 @@ esp_err_t pkt_sniffer_add_mac_match(pkt_sniffer_filtered_src_t* f,
     else if(addr_num == 3)
     {
         dest = f->filter.addr3_match;
-    }
-    else if(addr_num == 5)
-    {
-        dest = f->filter.addrANY_match;
     }
     else
     {

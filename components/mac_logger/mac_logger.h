@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include "esp_err.h"
 #include "pkt_sniffer.h"
+#include "dot11_mgmt.h"
 
 #define SSID_MAX_LEN 33
 #define MAC_LEN 6
@@ -32,6 +33,7 @@ struct ap
     uint32_t group_cipher_suite;
     uint32_t pairwise_cipher_suite;
     uint32_t auth_key_management;
+    rsn_cap_t rsn_cap;
     uint8_t num_assoc_stas;
     sta_t stas[CONFIG_MAC_LOGGER_MAX_STAS];
 } typedef ap_t;

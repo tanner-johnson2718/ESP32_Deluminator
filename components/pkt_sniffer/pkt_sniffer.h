@@ -17,6 +17,9 @@
 //              control packets clutter the inbound pkt queue and 2 most of the
 //              interesting 802.11 behavor comes from data and mgmt packets.
 //
+//              Only Frame Layer 1 protocol i.e. 802.11. Do not try to frame 
+//              higher protocols.
+//
 // Resources)
 //    * https://www.oreilly.com/library/view/80211-wireless-networks/0596100523/ch04.html
 //    * https://en.wikipedia.org/wiki/802.11_frame_types
@@ -46,7 +49,6 @@ typedef struct
     uint8_t addr1_match[6];
     uint8_t addr2_match[6];
     uint8_t addr3_match[6];
-    uint8_t addrANY_match[6];
 }  pkt_filter_t;
 
 typedef void (*pkt_sniffer_cb_t)(void* pkt, 
@@ -119,9 +121,8 @@ esp_err_t pkt_sniffer_add_type_subtype(pkt_sniffer_filtered_src_t* f,
 // pkt_sniffer_add_mac_match) Add a must mac addr to the passed filter.
 //
 // f - pointer to a filtered src type
-// addr_num - 1,2,3 or 5 depending on which addr in the dot11 header one wants
-//            to add exact match too. If 5, then will try to macth the passed
-//            mac to any of addr1-3 in pkts
+// addr_num - 1,2,3 depending on which addr in the dot11 header one wants
+//            to add exact match too.
 // mac - the mac addr
 //
 // Returns) ESP_OK if all goodm else invalid arg
