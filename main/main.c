@@ -143,8 +143,8 @@ static int do_restart(int, char**);
 static int do_tasks(int, char**);
 static int do_get_task(int argc, char** argv);
 static int do_dump_wifi_stats(int argc, char** argv);
-
-static int do_send_deauth(int, char**);
+static int do_get_log_level(int argc, char** argv);
+static int do_set_log_level(int argc, char** argv);
 
 static int do_mac_logger_init(int argc, char** argv);
 static int do_mac_logger_dump(int argc, char** argv);
@@ -158,6 +158,9 @@ static int do_PS_stats(int argc, char** argv);
 
 static int do_eapol_logger_init(int argc, char** argv);
 static int do_eapol_logger_clear(int argc, char** argv);
+static int do_el_deauth(int argc, char** argv);
+static int do_send_deauth(int, char**);
+
 
 static int do_DPD_init(int argc, char** argv);
 
@@ -191,6 +194,8 @@ static void init_wifi(void);
 
 void app_main(void)
 {
+    esp_log_level_set("*", ESP_LOG_INFO); 
+
     // Dont mix up this order ... it matters
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialize_nvs();
@@ -209,6 +214,8 @@ void app_main(void)
     repl_mux_register("rm", "Delete all the files on the FS", &do_rm);
     repl_mux_register("get_task", "Print name of current task", &do_get_task);
     repl_mux_register("dump_wifi_stats", "Dump Wifi Stats <module>", &do_dump_wifi_stats);
+    repl_mux_register("get_ll", "get log level", &do_get_log_level);
+    repl_mux_register("set_ll", "set log level", &do_set_log_level);
 
     // Pkt Sniffer / Mac Logger test driver repl functions
     repl_mux_register("PS_launch", "Launch pkt sniffer", &do_pkt_sniffer_launch);
@@ -223,11 +230,12 @@ void app_main(void)
     repl_mux_register("ML_dump", "dump mac data", &do_mac_logger_dump);
     repl_mux_register("ML_init", "Register the Mac logger cb with pkt sniffer and init the component", &do_mac_logger_init);
     repl_mux_register("ML_clear", "Clear the AP and STA list of the mac logger", &do_mac_logger_clear);
-    repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
     repl_mux_register("DPD_init", "Data Packet Dumper init and register", &do_DPD_init);
 
     repl_mux_register("EL_init", "Init the eapol logger, passing an index from ML", &do_eapol_logger_init);
     repl_mux_register("EL_clear", "Init the eapol logger, passing an index from ML", &do_eapol_logger_clear);
+    repl_mux_register("send_deauth", "send_deauth <ap_mac> <sta_mac>", &do_send_deauth);
+    repl_mux_register("EL_deauth", "Send a broadcast frame posing as the current AP", &do_el_deauth);
 
     // TCP File Server test driver repl functions
     repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
@@ -541,6 +549,12 @@ static int do_eapol_logger_clear(int argc, char** argv)
     return 0;
 }
 
+static int do_el_deauth(int argc, char** argv)
+{
+    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_deauth_curr());
+    return 0;
+}
+
 
 //*****************************************************************************
 // FS repl funcs
@@ -811,4 +825,47 @@ static int do_restart(int argc, char **argv)
 {
     ESP_LOGI(TAG, "Restarting");
     esp_restart();
+}
+
+static int do_get_log_level(int argc, char** argv)
+{
+    esp_log_write(ESP_LOG_INFO, "", "Log_Level = %d\n", esp_log_level_get("*"));
+    return 0;
+}
+
+static int do_set_log_level(int argc, char** argv)
+{
+    if(argc != 2)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "Usage: set_ll <level>\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 3 (Info)\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 4 (Debug)\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 5 (Verbose)\n");
+        return -1;
+    }
+
+    int x = (int) strtol(argv[1], NULL,10);
+
+    if(x == 3)
+    {
+        esp_log_level_set("*", ESP_LOG_INFO); 
+    }
+    else if(x == 4)
+    {
+        esp_log_level_set("*", ESP_LOG_DEBUG); 
+    }
+    else if(x == 5)
+    {
+        esp_log_level_set("*", ESP_LOG_VERBOSE); 
+    }
+    else
+    {
+        esp_log_write(ESP_LOG_INFO, "", "Usage: set_ll <level>\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 3 (Info)\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 4 (Debug)\n");
+        esp_log_write(ESP_LOG_INFO, "", "   Level = 5 (Verbose)\n");
+        return -1;
+    }
+
+    return 0;
 }

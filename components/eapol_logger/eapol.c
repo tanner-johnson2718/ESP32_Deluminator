@@ -118,6 +118,11 @@ esp_err_t eapol_logger_send_deauth_frame_targted(uint8_t* ap_mac, uint8_t* sta_m
     return eapol_logger_send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
 }
 
+esp_err_t eapol_logger_deauth_curr(void)
+{
+    return eapol_logger_send_deauth_frame(ap.bssid);
+}
+
 //*****************************************************************************
 // Handling Eapol PKTS
 //*****************************************************************************

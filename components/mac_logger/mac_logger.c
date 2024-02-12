@@ -210,7 +210,7 @@ void parse_beacon_pkt(beacon_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
 
     if(hdr->tagged_params[0] != TAGGED_PARAM_SSID)
     {
-        ESP_LOGE(TAG, "SSID in beacon pkt not found");
+        ESP_LOGV(TAG, "SSID in beacon pkt not found");
         _release_lock();
         return;
     }
@@ -249,14 +249,14 @@ void parse_beacon_pkt(beacon_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
 
         if(active_channel == 255)
         {
-            ESP_LOGE(TAG, "Couldnt find active channel in beacon / probe res");
+            ESP_LOGV(TAG, "Couldnt find active channel in beacon / probe res");
             _release_lock();
             return;
         }
 
         if(rsn_ptr == NULL)
         {
-            ESP_LOGE(TAG, "Couldnt find rsn info in beacon / probe ress");
+            ESP_LOGV(TAG, "Couldnt find rsn info in beacon / probe ress");
             _release_lock();
             return;
         }
@@ -311,7 +311,7 @@ void parse_data_pkt(dot11_header_t* hdr, wifi_pkt_rx_ctrl_t* rx_ctrl)
     }
     else
     {
-        ESP_LOGE(TAG, "Data pkt skipped");
+        ESP_LOGV(TAG, "Data pkt w/ ds == 0x3 || 0??");
         _release_lock();
         return;
     }
