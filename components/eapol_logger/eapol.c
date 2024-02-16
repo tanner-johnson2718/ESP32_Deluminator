@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #include "esp_wifi.h"
 #include "esp_log.h"
@@ -9,6 +10,7 @@
 #include "pkt_sniffer.h"
 #include "dot11.h"
 #include "dot11_data.h"
+#include "pcap.h"
 
 static const char* TAG = "EAPOL LOGGER";
 #define EAPOL_MAX_PKT_LEN 256
@@ -126,12 +128,46 @@ esp_err_t eapol_logger_deauth_curr(void)
 //*****************************************************************************
 // Handling Eapol PKTS
 //*****************************************************************************
-/*
-static void eapol_dump_to_disk(uint8_t ap_index)
+
+static int write_safe(FILE* f, void* buff, int num, char* prompt)
+{
+    size_t num_written = fwrite(buff, 1 , num, f);
+    if(num_written != num)
+    {
+        ESP_LOGE(TAG, "Failed to wrtie %s", prompt);
+        fclose(f);
+        return 1;
+    }
+    return 0;
+}
+
+static int write_pkt_safe(FILE* f, void* buff, int num, char* prompt)
+{
+    pcap_pkthdr_t pkt_hdr = {0};
+    pkt_hdr.caplen = num;
+    pkt_hdr.len = num;
+
+    if(write_safe(f, &pkt_hdr, sizeof(pcap_pkthdr_t), prompt)) {return 1;}
+    if(buff)
+    {
+        if(write_safe(f, buff, num, prompt)) {return 1;}
+    }
+
+    return 0;
+}
+
+static void eapol_dump_to_disk(void)
 {
     char path[33];
 
-    snprintf(path, 32, "/spiffs/%.19s.pkt", ap_list[ap_index].ssid);
+    pcap_file_header_t file_hdr = {0};
+    file_hdr.magic = PCAP_MAGIC;
+    file_hdr.linktype = DOT11_LINK_TYPE;
+    file_hdr.snaplen = 0xffff;
+    file_hdr.version_major = 2;
+    file_hdr.version_minor = 4;
+
+    snprintf(path, 32, "/spiffs/%.19s.pkt", ap.ssid);
     
     ESP_LOGI(TAG, "Opening %s to writeout eapol pkts", path);
     FILE* f = fopen(path, "w");
@@ -142,30 +178,19 @@ static void eapol_dump_to_disk(uint8_t ap_index)
         return;
     }
 
-    size_t num_written = fwrite(ap_list[ap_index].eapol_pkt_lens, 1, 2*EAPOL_NUM_PKTS, f);
-    if(num_written != 2 * EAPOL_NUM_PKTS)
-    {
-        ESP_LOGE(TAG, "Failed to write EAPOL Header (%d / %d)", num_written, 2*EAPOL_NUM_PKTS);
-        fclose(f);
-        return;
-    }
-
-    uint8_t i;
-    for(i = 0; i < EAPOL_NUM_PKTS; ++i)
-    {
-        num_written = fwrite(ap_list[ap_index].eapol_buffer + i*EAPOL_MAX_PKT_LEN, 1, ap_list[ap_index].eapol_pkt_lens[i], f);
-        if(num_written != ap_list[ap_index].eapol_pkt_lens[i])
-        {
-            ESP_LOGE(TAG, "Failed to write EAPOL %d Pkt (%d / %d)", i, num_written, ap_list[ap_index].eapol_pkt_lens[i]);
-            fclose(f);
-            return;
-        }
-    }
+    if(write_safe(f, &file_hdr, sizeof(pcap_file_header_t), "pcap header")){return;}
+    if(write_pkt_safe(f, asoc_req, asoc_req_len, "assoc req")){ return; }
+    if(write_pkt_safe(f, asoc_res, asoc_res_len, "assoc res")){ return; }
+    if(write_pkt_safe(f, eapol_01, eapol_01_len, "eapol  01")){ return; }
+    if(write_pkt_safe(f, eapol_02, eapol_02_len, "eapol  02")){ return; }
+    if(write_pkt_safe(f, eapol_03, eapol_03_len, "eapol  03")){ return; }
+    if(write_pkt_safe(f, eapol_04, eapol_04_len, "eapol  04")){ return; }
+    if(write_pkt_safe(f, NULL, 0, "NULL hddr")){ return; }
     
     fclose(f);
     ESP_LOGI(TAG, "Write out of EAPOL pkts successful!");
 }
-*/
+
 
 void eapol_cb(void* pkt, 
               void* meta_data, 
@@ -248,6 +273,14 @@ void eapol_cb(void* pkt,
     if(*len > 0)
     {
         ESP_LOGE(TAG, "Recieved Duplicate EAPOL PKTs, overwriting");
+    }
+    else
+    {
+        ++captured;
+        if(captured == 6)
+        {
+            eapol_dump_to_disk();
+        }
     }
 
     memcpy(buffer, (uint8_t*) pkt, rx_ctrl->sig_len - 4);

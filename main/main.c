@@ -180,7 +180,7 @@ static int do_tcp_file_server_launch(int argc, char** argv);
 // this ensures the disconnect event leaves the AP with no STAs
 //*****************************************************************************
 
-#define USE_AP 0
+#define USE_AP 1
 
 #if USE_AP
     #define EXAMPLE_ESP_WIFI_SSID "Linksys-76fc"
@@ -238,7 +238,7 @@ void app_main(void)
     repl_mux_register("EL_deauth", "Send a broadcast frame posing as the current AP", &do_el_deauth);
 
     // TCP File Server test driver repl functions
-    repl_mux_register("tcp_file_server_launch", "Launch the TCP File server, mount path as arg", &do_tcp_file_server_launch);
+    repl_mux_register("tcp_file_server_launch", "Launch the TCP File server", &do_tcp_file_server_launch);
     repl_mux_register("tcp_file_server_kill", "Kill the TCP File server", &do_tcp_file_server_kill);
 
     ESP_ERROR_CHECK(repl_mux_init());
@@ -551,10 +551,31 @@ static int do_eapol_logger_clear(int argc, char** argv)
 
 static int do_el_deauth(int argc, char** argv)
 {
-    ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_deauth_curr());
+    int i;
+    for(i = 0; i < 10; ++i)
+    {
+        esp_log_write(ESP_LOG_INFO, "", "Sending deauth ...");
+        ESP_ERROR_CHECK_WITHOUT_ABORT(eapol_logger_deauth_curr());
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    
     return 0;
 }
 
+//*****************************************************************************
+// TCP File server
+//*****************************************************************************
+static int do_tcp_file_server_kill(int argc, char** argv)
+{
+    ESP_ERROR_CHECK_WITHOUT_ABORT(tcp_file_server_kill());
+    return 0;
+}
+
+static int do_tcp_file_server_launch(int argc, char** argv)
+{
+    ESP_ERROR_CHECK_WITHOUT_ABORT(tcp_file_server_launch("/spiffs"));
+    return 0;
+}
 
 //*****************************************************************************
 // FS repl funcs

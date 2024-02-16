@@ -98,6 +98,7 @@
 //*****************************************************************************
 
 #pragma once
+#include "esp_err.h"
 
 //*****************************************************************************
 // tcp_file_server) Creates the file server handler task. Assumes the wifi
