@@ -138,6 +138,7 @@ static int write_safe(FILE* f, void* buff, int num, char* prompt)
         fclose(f);
         return 1;
     }
+    ESP_LOGI(TAG, "%d bytes written to disk\n", num_written);
     return 0;
 }
 
@@ -185,7 +186,6 @@ static void eapol_dump_to_disk(void)
     if(write_pkt_safe(f, eapol_02, eapol_02_len, "eapol  02")){ return; }
     if(write_pkt_safe(f, eapol_03, eapol_03_len, "eapol  03")){ return; }
     if(write_pkt_safe(f, eapol_04, eapol_04_len, "eapol  04")){ return; }
-    if(write_pkt_safe(f, NULL, 0, "NULL hddr")){ return; }
     
     fclose(f);
     ESP_LOGI(TAG, "Write out of EAPOL pkts successful!");
@@ -209,13 +209,13 @@ void eapol_cb(void* pkt,
     {
         buffer = asoc_res;
         len = &asoc_res_len;
-        ESP_LOGI(TAG, "%s -> assoc res", ap.ssid);
+        ESP_LOGI(TAG, "%s -> assoc res -- len = %d", ap.ssid, rx_ctrl->sig_len - 4);
     }
     else if(type == PKT_MGMT && subtype.mgmt_subtype == PKT_ASSOC_REQ)
     {
         buffer = asoc_req;
         len = &asoc_req_len;
-        ESP_LOGI(TAG, "%s -> assoc req", ap.ssid);
+        ESP_LOGI(TAG, "%s -> assoc req --  len = %d", ap.ssid, rx_ctrl->sig_len - 4);
     }
     else if(type == PKT_DATA && subtype.data_subtype == PKT_QOS_DATA && hdr->protect == 0)
     {
@@ -242,25 +242,25 @@ void eapol_cb(void* pkt,
             { 
                 buffer = eapol_01; 
                 len = &eapol_01_len;
-                ESP_LOGI(TAG, "%s -> eapol 1", ap.ssid);
+                ESP_LOGI(TAG, "%s -> eapol 1 -- len = %d", ap.ssid, rx_ctrl->sig_len - 4);
             }
             else if(s == 0 && ds == 1) 
             { 
                 buffer = eapol_02; 
                 len = &eapol_02_len;
-                ESP_LOGI(TAG, "%s -> eapol 2", ap.ssid);
+                ESP_LOGI(TAG, "%s -> eapol 2 -- len = %d", ap.ssid, rx_ctrl->sig_len - 4);
             }
             else if(s == 1 && ds == 2) 
             { 
                 buffer = eapol_03; 
                 len = &eapol_03_len;
-                ESP_LOGI(TAG, "%s -> eapol 3", ap.ssid);    
+                ESP_LOGI(TAG, "%s -> eapol 3 -- len = %d", ap.ssid, rx_ctrl->sig_len - 4);    
             }
             else if(s == 1 && ds == 1) 
             { 
                 buffer = eapol_04; 
                 len = &eapol_04_len;
-                ESP_LOGI(TAG, "%s -> eapol 4", ap.ssid);
+                ESP_LOGI(TAG, "%s -> eapol 4 -- len  = %d", ap.ssid, rx_ctrl->sig_len - 4);
             }
         }
     }
@@ -277,14 +277,15 @@ void eapol_cb(void* pkt,
     else
     {
         ++captured;
-        if(captured == 6)
-        {
-            eapol_dump_to_disk();
-        }
     }
 
     memcpy(buffer, (uint8_t*) pkt, rx_ctrl->sig_len - 4);
     *len = rx_ctrl->sig_len - 4;
+
+    if(captured == 6)
+    {
+        eapol_dump_to_disk();
+    }
 
     eapol_end:
     _release_lock();
