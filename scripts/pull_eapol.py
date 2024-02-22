@@ -25,9 +25,9 @@ for i in range(0, n_files):
     index = data[0]
     path = data[1:]
 
-    if b'.pkt' in path:
-        files.append(path)
-        indexs.append(index)
+
+    files.append(path)
+    indexs.append(index)
 
 
 print("Packet Dumps Found from server: ")

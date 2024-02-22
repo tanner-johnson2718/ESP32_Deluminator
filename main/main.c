@@ -163,6 +163,7 @@ static int do_send_deauth(int, char**);
 
 
 static int do_DPD_init(int argc, char** argv);
+static int do_DPD_fini(int argc, char** argv);
 
 static int do_tcp_file_server_kill(int argc, char** argv);
 static int do_tcp_file_server_launch(int argc, char** argv);
@@ -515,14 +516,20 @@ static int do_PS_stats(int argc, char** argv)
 
 static int do_DPD_init(int argc, char** argv)
 {
-    if(argc != 2)
+    if(argc != 3)
     {
-        esp_log_write(ESP_LOG_INFO, "", "usage DPD_init <pkt sub type base 10> (see dot11.h)");
+        esp_log_write(ESP_LOG_INFO, "", "usage DPD_init <pkt sub type base 10> <dump_name> (see dot11.h)");
         return -1;
     }
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(data_pkt_dumper_init((data_pkt_subtype_t) strtol(argv[1], NULL,10)));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(data_pkt_dumper_init((data_pkt_subtype_t) strtol(argv[1], NULL,10), argv[2]));
 
+    return 0;
+}
+
+static int do_DPD_fini(int argc, char** argv)
+{
+    data_pkt_dumper_fini();  // always ok
     return 0;
 }
 
